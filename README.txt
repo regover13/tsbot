@@ -10,8 +10,15 @@ VORAUSSETZUNGEN
 - ffmpeg            winget install ffmpeg
 - VB-Cable          https://vb-audio.com/Cable/
   (einmalig installieren, kostenlos)
-- Anthropic API-Key https://console.anthropic.com/settings/keys
-  (in config.txt eintragen)
+- Anthropic API-Key
+  Benoetigt fuer: Teilnehmer-OCR und Protokoll-Zuordnung per KI
+  Holen unter:    https://console.anthropic.com/settings/keys
+    1. Einloggen / Konto erstellen
+    2. "Create Key" klicken, Namen vergeben
+    3. Key kopieren (wird nur einmal angezeigt!)
+    4. In config.txt eintragen: ANTHROPIC_API_KEY=sk-ant-...
+  Kosten: wenige Cent pro Sitzung (Nutzungsabhaengig)
+  Hinweis: config.txt ist in .gitignore - wird nie ins Repo committed!
 
 
 EINRICHTUNG (einmalig)
