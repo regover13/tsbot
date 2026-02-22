@@ -51,16 +51,18 @@ class TSQueryTracker:
             )
 
         logger.info("Verbinde mit TS3 ServerQuery %s:%d", self._host, self._port)
-        self._conn = ts3.query.TS3ServerConnection(
-            f"telnet://{self._user}:{self._password}@{self._host}:{self._port}"
+        self._conn = ts3.query.TS3Connection(self._host, self._port)
+        self._conn.login(
+            client_login_name=self._user,
+            client_login_password=self._password,
         )
-        self._conn.exec_("use", sid=self._server_id)
+        self._conn.use(sid=self._server_id)
 
         # Sofort aktuelle Teilnehmer im Kanal laden
         self._lade_aktuelle_teilnehmer()
 
         # Event-Benachrichtigungen aktivieren
-        self._conn.exec_("servernotifyregister", event="server")
+        self._conn.servernotifyregister(event="server")
         self._running = True
 
         # Hintergrund-Thread für eingehende Events
@@ -88,8 +90,8 @@ class TSQueryTracker:
     def _lade_aktuelle_teilnehmer(self):
         """Lädt alle aktuell im konfigurierten Kanal befindlichen Clients."""
         try:
-            clients = self._conn.exec_("clientlist")
-            for c in clients:
+            resp = self._conn.clientlist()
+            for c in resp.parsed:
                 if c.get("client_type") == "0":  # 0 = normaler Client, 1 = Query
                     cid = int(c.get("cid", 0))
                     if self._channel_id == 0 or cid == self._channel_id:
@@ -102,9 +104,9 @@ class TSQueryTracker:
         import ts3
         while self._running:
             try:
-                event = self._conn.wait_for_event(timeout=5)
+                event = self._conn.wait_for_event(timeout=5.0)
                 self._verarbeite_event(event)
-            except ts3.query.TS3TimeoutError:
+            except ts3.TS3TimeoutError:
                 continue
             except Exception as e:
                 if self._running:
@@ -116,7 +118,7 @@ class TSQueryTracker:
         if not event:
             return
         event_type = event.event
-        data = event[0] if event else {}
+        data = event.parsed[0] if event.parsed else {}
 
         if event_type == "notifycliententerview":
             # Nur den konfigurierten Kanal berücksichtigen

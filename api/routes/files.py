@@ -1,8 +1,10 @@
 """
-Protokoll-Endpoints: GET /protocols, GET /protocols/{session}/{file}
+Protokoll-Endpoints: GET /protocols, GET /protocols/{session}/{file},
+                     DELETE /protocols/{session}
 """
 
 import os
+import shutil
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
@@ -35,6 +37,7 @@ async def list_protocols():
 
         docx_files = sorted(session_dir.glob("Protokoll_*.docx"))
         transcript_files = sorted(session_dir.glob("*_transkript_*.txt"))
+        audio_files = sorted(session_dir.glob("audio.*"))
 
         result.append({
             "session_id":  session_dir.name,
@@ -42,17 +45,17 @@ async def list_protocols():
             "started_at":  meta.get("started_at", ""),
             "protokolle":  [f.name for f in docx_files],
             "transkripte": [f.name for f in transcript_files],
+            "audio":       [f.name for f in audio_files],
         })
 
     return {"sessions": result}
 
 
-@router.get("/{session_id}/{filename}", summary="Protokoll oder Transkript herunterladen")
+@router.get("/{session_id}/{filename}", summary="Protokoll, Transkript oder Audio herunterladen")
 async def download_file(session_id: str, filename: str):
     """
-    Lädt eine Datei aus einer Session herunter (Protokoll .docx oder Transkript .txt).
+    Lädt eine Datei aus einer Session herunter.
     """
-    # Sicherheitsprüfung: keine Pfad-Traversal
     if ".." in session_id or ".." in filename:
         raise HTTPException(status_code=400, detail="Ungültiger Pfad.")
 
@@ -76,3 +79,19 @@ async def download_file(session_id: str, filename: str):
         filename=filename,
         media_type=media_types[suffix],
     )
+
+
+@router.delete("/{session_id}", summary="Session vollständig löschen")
+async def delete_session(session_id: str):
+    """
+    Löscht eine komplette Session (Audio, Transkript, Protokoll, Metadaten).
+    """
+    if ".." in session_id or "/" in session_id:
+        raise HTTPException(status_code=400, detail="Ungültiger Session-ID.")
+
+    session_dir = DATA_DIR / "sessions" / session_id
+    if not session_dir.exists():
+        raise HTTPException(status_code=404, detail="Session nicht gefunden.")
+
+    shutil.rmtree(session_dir)
+    return {"message": f"Session {session_id} gelöscht."}

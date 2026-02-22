@@ -17,6 +17,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from bot.audio_capture import AudioCapture
 from bot.ts_query import TSQueryTracker
+from bot.ts_client_control import TSClientControl
 
 logger = logging.getLogger(__name__)
 
@@ -47,14 +48,16 @@ class SessionManager:
         self.started_at: datetime | None = None
         self.error_msg:  str | None = None
 
-        self._audio:   AudioCapture | None   = None
-        self._tracker: TSQueryTracker | None = None
+        self._audio:     AudioCapture | None    = None
+        self._tracker:   TSQueryTracker | None  = None
+        self._ts_client: TSClientControl | None = None
         self._executor = ThreadPoolExecutor(max_workers=1)
 
     # ── Öffentliche API ───────────────────────────────────────
 
     async def start_session(self, thema: str, agenda: list | None = None,
-                            extra_instruktionen: str | None = None) -> str:
+                            extra_instruktionen: str | None = None,
+                            channel_id: int | None = None) -> str:
         """
         Startet eine neue Sitzung.
 
@@ -96,8 +99,16 @@ class SessionManager:
             json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
         )
 
-        # ServerQuery Tracker starten
-        self._tracker = TSQueryTracker()
+        # TS3 Client mit Server verbinden
+        cid = channel_id or int(os.environ.get("TS_CHANNEL_ID", "0"))
+        self._ts_client = TSClientControl()
+        try:
+            self._ts_client.connect(cid)
+        except Exception as e:
+            logger.warning("TS3 Client-Verbindung fehlgeschlagen: %s", e)
+
+        # ServerQuery Tracker starten (mit gewähltem Kanal)
+        self._tracker = TSQueryTracker(channel_id=cid)
         try:
             self._tracker.start()
         except Exception as e:
@@ -133,6 +144,14 @@ class SessionManager:
             json.dumps(participants, ensure_ascii=False, indent=2), encoding="utf-8"
         )
         logger.info("%d Teilnehmer gespeichert.", len(participants))
+
+        # TS3 Client vom Server trennen
+        if self._ts_client:
+            try:
+                self._ts_client.disconnect()
+            except Exception as e:
+                logger.warning("TS3 Client-Trennung fehlgeschlagen: %s", e)
+            self._ts_client = None
 
         self.state = State.TRANSCRIBING
 
@@ -236,3 +255,4 @@ class SessionManager:
         self.error_msg   = None
         self._audio      = None
         self._tracker    = None
+        self._ts_client  = None

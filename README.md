@@ -87,7 +87,7 @@ Voraussetzung: Root-Zugang, ca. 6 GB freier Speicher (für Python-Umgebung + Whi
 ```bash
 ssh root@DEINE_SERVER_IP
 
-git clone https://github.com/DEIN_USER/Whisper-Setup.git /opt/tsbot
+git clone https://github.com/DEIN_USER/tsbot.git /opt/tsbot
 cd /opt/tsbot
 ```
 
@@ -295,11 +295,16 @@ Erreichbar unter `http://SERVER_IP:8080` (Login mit `API_USER` / `API_SECRET`).
 ### Tab „Aufnahme"
 
 1. **Thema** eingeben (Pflichtfeld)
-2. **Agenda** leer lassen = Server-Agenda wird verwendet; oder für diese Sitzung überschreiben
-3. **Zusätzliche Instruktionen** optional — freier Text, der direkt an Claude angehängt wird
+2. **TeamSpeak-Kanal** aus Dropdown wählen — der Bot tritt genau diesem Kanal bei.
+   Das Dropdown lädt alle Kanäle live vom Server. Der zuletzt verwendete Kanal wird
+   automatisch vorausgewählt (im Browser-LocalStorage gespeichert).
+3. **Agenda** leer lassen = Server-Agenda wird verwendet; oder für diese Sitzung überschreiben
+4. **Zusätzliche Instruktionen** optional — freier Text, der direkt an Claude angehängt wird
    Beispiele: *„Schreibe Beschlüsse besonders hervor."* / *„Ignoriere Small Talk."*
-4. **▶ Aufnahme starten** → Bot tritt TS3-Kanal bei, Aufnahme und Teilnehmer-Tracking starten
-5. **■ Aufnahme stoppen** → MP3 wird gespeichert, Transkription + Protokollerstellung laufen im Hintergrund
+5. **▶ Aufnahme starten** → Bot verbindet sich mit TS3, tritt dem Kanal bei,
+   Aufnahme und Teilnehmer-Tracking starten automatisch
+6. **■ Aufnahme stoppen** → Bot verlässt den Kanal, MP3 wird gespeichert,
+   Transkription + Protokollerstellung laufen im Hintergrund
 
 Der Status-Badge zeigt den Fortschritt:
 `IDLE` → `RECORDING` → `TRANSCRIBING` → `GENERATING` → `DONE`
@@ -316,18 +321,23 @@ Dauerhafte Server-Agenda bearbeiten (wird für alle zukünftigen Sitzungen verwe
 Liste aller abgeschlossenen Sitzungen mit Download-Links für:
 - `Protokoll_YYYYMMDD_HHMM.docx` — Word-Protokoll
 - `*_transkript_*.txt` — Volltranskript mit Zeitstempeln
+- `audio.mp3` — Original-Aufnahme
+
+Über den **🗑 Löschen**-Button wird eine komplette Session unwiderruflich entfernt
+(Audio, Transkript, Protokoll und Metadaten).
 
 ---
 
 ## 6. Projektstruktur
 
 ```
-/opt/tsbot/  (Linux-Server) bzw. Whisper-Setup/ (Windows-Repo)
+/opt/tsbot/  (Linux-Server) bzw. tsbot/ (Windows-Repo)
 ├── core/
 │   ├── transkribieren.py        Whisper-Transkription (plain + whisperx)
 │   └── protokoll_erstellen.py  Protokoll-Generator (Claude API)
 ├── bot/
 │   ├── ts_query.py             TS3 ServerQuery Teilnehmer-Tracking
+│   ├── ts_client_control.py    TS3 Client verbinden/trennen per ClientQuery
 │   ├── audio_capture.py        PulseAudio + ffmpeg Aufnahme
 │   └── session_manager.py      Zustandsmaschine (IDLE→RECORDING→…→DONE)
 ├── api/
@@ -335,7 +345,8 @@ Liste aller abgeschlossenen Sitzungen mit Download-Links für:
 │   ├── routes/
 │   │   ├── session.py          POST /session/start, /session/stop
 │   │   ├── status.py           GET /status
-│   │   ├── files.py            GET /protocols, Download
+│   │   ├── files.py            GET /protocols, Download, DELETE
+│   │   ├── channels.py         GET /channels (TS3 Kanalliste)
 │   │   └── agenda.py           GET/PUT /agenda
 │   └── static/index.html       Web-Dashboard
 ├── scripts/

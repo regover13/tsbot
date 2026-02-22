@@ -12,6 +12,7 @@ class StartRequest(BaseModel):
     thema:               str
     agenda:              list[str] | None = None
     extra_instruktionen: str | None = None
+    channel_id:          int | None = None
 
 
 @router.post("/start", summary="Sitzungsaufnahme starten")
@@ -29,6 +30,7 @@ async def start_session(body: StartRequest, request: Request):
             thema=body.thema,
             agenda=body.agenda,
             extra_instruktionen=body.extra_instruktionen,
+            channel_id=body.channel_id,
         )
     except RuntimeError as e:
         raise HTTPException(status_code=409, detail=str(e))
