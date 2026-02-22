@@ -28,11 +28,25 @@ EINRICHTUNG (einmalig)
    installiert PyTorch mit CUDA (GPU) oder CPU-Version.
    Installiert: Whisper, python-docx, anthropic SDK
 
-2. Windows Soundeinstellungen:
-   - "Lautsprecher (VB-Audio Virtual Cable)" als Standard-Ausgabe
-   - "CABLE Output" → Eigenschaften → Abhoeren →
+2. Windows Soundeinstellungen (einmalig nach VB-Cable-Installation):
+   Rechtsklick Lautsprecher-Symbol → "Soundeinstellungen" →
+   "Weitere Soundeinstellungen"
+
+   Tab "Wiedergabe":
+   - "Lautsprecher (VB-Audio Virtual Cable)" → Rechtsklick →
+     "Als Standardgeraet festlegen"
+     (alle System-Sounds laufen nun durch VB-Cable)
+
+   Tab "Aufnahme":
+   - "CABLE Output (VB-Audio Virtual Cable)" → Rechtsklick →
+     "Als Standardgeraet festlegen"
+   - "CABLE Output" → Rechtsklick → "Eigenschaften" →
+     Tab "Abhoeren" →
      "Dieses Geraet abhoeren" aktivieren →
-     Wiedergabe ueber: "Lautsprecher (2- Jabra Link 380)"
+     "Wiedergabe ueber: [dein Kopfhoerer/Lautsprecher,
+      z.B. Lautsprecher (2- Jabra Link 380)]"
+     → OK
+     (du hoerst alles weiterhin normal ueber dein Geraet)
 
 3. config.txt oeffnen → API-Key eintragen
 
@@ -60,7 +74,7 @@ SCHRITT 2: TEAMSPEAK-SCREENSHOTS FUER TEILNEHMERLISTE
 SCHRITT 3: TRANSKRIBIEREN
 → 2_transkribieren.bat ausfuehren
   MP3 per Drag & Drop auf das Skript ziehen.
-  Laeuft auf RTX 5080 GPU (Whisper large-Modell).
+  Laeuft auf NVIDIA GPU (z.B. RTX 5080) oder CPU (Whisper large-Modell).
   Ergebnis: aufnahme_..._transkript_YYYYMMDD_HHMM.txt
 
 SCHRITT 4: PROTOKOLL ERSTELLEN
