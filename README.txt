@@ -1,61 +1,93 @@
 ================================================
  WHISPER SETUP - Sitzungstranskription
- TeamSpeak / Audioaufnahmen -> Word-Protokoll
+ TeamSpeak -> Transkript -> Word-Protokoll
 ================================================
 
 VORAUSSETZUNGEN
 ---------------
-- Python 3.9 oder neuer  →  https://www.python.org/downloads/
+- Python 3.9+       winget install Python.Python.3
   (Bei Installation: "Add Python to PATH" anhaaken!)
-- ffmpeg                 →  winget install ffmpeg
-  (oder https://ffmpeg.org/download.html)
+- ffmpeg            winget install ffmpeg
+- VB-Cable          https://vb-audio.com/Cable/
+  (einmalig installieren, kostenlos)
+- Anthropic API-Key https://console.anthropic.com/settings/keys
+  (in config.txt eintragen)
 
 
-SCHRITT 1: EINMALIGE INSTALLATION
-----------------------------------
-→ 1_install.bat ausfuehren
-   Installiert Whisper und alle Abhaengigkeiten automatisch.
-   Beim ersten Transkript wird das KI-Modell (~1.5 GB) heruntergeladen.
+EINRICHTUNG (einmalig)
+-----------------------
+1. install.bat als Administrator ausfuehren
+   Erkennt automatisch ob NVIDIA GPU vorhanden ist und
+   installiert PyTorch mit CUDA (GPU) oder CPU-Version.
+   Installiert: Whisper, python-docx, anthropic SDK
+
+2. Windows Soundeinstellungen:
+   - "Lautsprecher (VB-Audio Virtual Cable)" als Standard-Ausgabe
+   - "CABLE Output" → Eigenschaften → Abhoeren →
+     "Dieses Geraet abhoeren" aktivieren →
+     Wiedergabe ueber: "Lautsprecher (2- Jabra Link 380)"
+
+3. config.txt oeffnen → API-Key eintragen
+
+4. agenda.txt vor jeder Sitzung anpassen (ein Punkt pro Zeile)
 
 
-SCHRITT 2: TEAMSPEAK-AUFNAHME
-------------------------------
-Option A – TeamSpeak eingebaut:
-  Tools → Options → Capture → "Start recording" aktivieren
-  Aufnahmen landen unter: %AppData%\TS3Client\
+WORKFLOW PRO SITZUNG
+---------------------
 
-Option B – OBS Studio (kostenlos):
-  Audio-Quelle: "Desktop-Audio" oder Mikrofon
-  Format: MP3 oder WAV
+SCHRITT 1: AUFNAHME
+→ 1_aufnahme_starten.bat doppelklicken
+  Nimmt auf: Jabra-Mikrofon + alles was durch VB-Cable laeuft
+  (TeamSpeak-Ausgabe, alle System-Sounds)
+  Stoppen: Q druecken
+  Ergebnis: aufnahme_YYYYMMDD_HHMM.mp3
 
+SCHRITT 2: TEAMSPEAK-SCREENSHOTS FUER TEILNEHMERLISTE
+  Screenshots von TS3 machen wenn Teilnehmer beitreten oder gehen
+  (Win+Shift+S oder Druck-Taste) und alle PNGs in diesen Ordner legen.
+  Dateiname egal – es werden ALLE PNGs im Ordner ausgewertet.
+  Claude Vision extrahiert automatisch alle Nutzernamen im Format
+  "Vorname Nachname/FRSxxx", filtert Kanalbezeichnungen heraus
+  und entfernt Duplikate. Ergebnis: Tabelle im Protokoll.
 
 SCHRITT 3: TRANSKRIBIEREN
---------------------------
 → 2_transkribieren.bat ausfuehren
-   Audiodatei per Drag & Drop auf das Skript ziehen
-   ODER beim Start den Pfad eingeben.
+  MP3 per Drag & Drop auf das Skript ziehen.
+  Laeuft auf RTX 5080 GPU (Whisper large-Modell).
+  Ergebnis: aufnahme_..._transkript_YYYYMMDD_HHMM.txt
 
-   Ergebnis: <dateiname>_transkript_YYYYMMDD_HHMM.txt
-   (mit Zeitstempeln, z.B. [00:35 - 00:42] "Dann fangen wir an...")
-
-
-SCHRITT 4: WORD-PROTOKOLL ERSTELLEN
--------------------------------------
+SCHRITT 4: PROTOKOLL ERSTELLEN
 → 3_protokoll_erstellen.bat ausfuehren
-   Transkript-TXT per Drag & Drop auf das Skript ziehen.
-   Thema und Teilnehmer eingeben.
+  Transkript-TXT per Drag & Drop auf das Skript ziehen.
+  Thema eingeben – Rest laeuft automatisch:
+  - Agenda aus agenda.txt
+  - Teilnehmer per OCR aus allen PNGs
+  - Claude API ordnet Transkript den Agenda-Punkten zu
+  Ergebnis: Protokoll_YYYYMMDD_HHMM.docx
+  (mit Inhaltsverzeichnis, Teilnehmertabelle, Zusammenfassungen)
+  Inhaltsverzeichnis in Word mit F9 aktualisieren!
 
-   Ergebnis: Protokoll_YYYYMMDD_HHMM.docx
-   (fertiges Word-Dokument mit Zeitstempeln, Metadaten, Notizfeld)
+
+DATEIEN IM ORDNER
+------------------
+install.bat              Einmalige Installation
+1_aufnahme_starten.bat   Aufnahme starten/stoppen
+2_transkribieren.bat     MP3 -> Transkript (TXT)
+3_protokoll_erstellen.bat Transkript -> Word-Protokoll
+transkribieren.py        Whisper-Skript (large, GPU)
+protokoll_erstellen.py   Protokoll-Generator mit Claude API
+agenda.txt               Agenda bearbeiten vor jeder Sitzung
+config.txt               API-Key (NICHT ins Git committen!)
+config.example.txt       Vorlage fuer config.txt
+.gitignore               Schuetzt API-Key und Aufnahmen vor Git
 
 
-WHISPER-MODELLE (optional anpassen in transkribieren.py)
----------------------------------------------------------
-  tiny    – sehr schnell, weniger genau      (~75 MB)
-  base    – schnell, OK fuer klare Sprache   (~145 MB)
-  small   – guter Kompromiss                 (~460 MB)
-  medium  – EMPFOHLEN fuer Deutsch           (~1.5 GB)  ← Standard
-  large   – maximale Genauigkeit             (~3.1 GB)
+WHISPER-MODELLE
+---------------
+  large   – Standard, beste Qualitaet  (~2.9 GB, GPU empfohlen)
+  medium  – schneller, etwas ungenauer (~1.5 GB)
+  small   – CPU-tauglich               (~460 MB)
+  Modell aendern in: transkribieren.py → whisper.load_model("...")
 
 
 SUPPORT

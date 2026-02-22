@@ -24,6 +24,19 @@ REM pip aktualisieren
 python -m pip install --upgrade pip
 echo.
 
+REM Python Scripts-Pfad zu PATH hinzufuegen (verhindert PATH-Warnungen)
+for /f "delims=" %%P in ('python -c "import site; print(site.USER_BASE)"') do set PYUSERBASE=%%P
+set PYSCRIPTS=%PYUSERBASE%\Scripts
+echo %PATH% | find /i "%PYSCRIPTS%" >nul 2>&1
+if %errorlevel% neq 0 (
+    echo Python Scripts-Pfad wird zu PATH hinzugefuegt: %PYSCRIPTS%
+    setx PATH "%PATH%;%PYSCRIPTS%" >nul
+    echo Pfad gesetzt - bitte CMD neu starten damit es wirkt.
+) else (
+    echo Python Scripts-Pfad bereits in PATH.
+)
+echo.
+
 REM NVIDIA GPU pruefen
 echo Pruefe auf NVIDIA GPU...
 nvidia-smi >nul 2>&1
