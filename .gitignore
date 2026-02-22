@@ -1,0 +1,21 @@
+# API-Key und persönliche Konfiguration - NIEMALS committen!
+config.txt
+
+# Aufnahmen und generierte Dateien
+*.mp3
+*.wav
+*.m4a
+*_transkript_*.txt
+Protokoll_*.docx
+
+# TeamSpeak Screenshots
+*.png
+
+# Python Cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Windows
+Thumbs.db
+~$*

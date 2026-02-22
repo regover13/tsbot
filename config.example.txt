@@ -1,0 +1,10 @@
+# Whisper-Setup Konfiguration
+# ============================
+# Diese Datei als "config.txt" speichern und API-Key eintragen.
+# config.txt ist in .gitignore – wird NICHT ins Repository committed!
+
+# Anthropic API-Key (https://console.anthropic.com/settings/keys)
+ANTHROPIC_API_KEY=sk-ant-HIER_DEINEN_KEY_EINTRAGEN
+
+# Claude-Modell
+CLAUDE_MODEL=claude-sonnet-4-5-20250929
