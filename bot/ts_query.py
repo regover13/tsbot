@@ -33,7 +33,7 @@ class TSQueryTracker:
         self._server_id = server_id or int(os.environ.get("TS_SERVER_ID", "1"))
         self._channel_id = channel_id or int(os.environ.get("TS_CHANNEL_ID", "0"))
 
-        # Akkumulierte Teilnehmer: frs → {"name": str, "frs": str, "joined_at": str}
+        # Akkumulierte Teilnehmer: key → {"name": str, "frs": str, "joined_at": str}
         self._participants: dict[str, dict] = {}
         self._lock = threading.Lock()
         self._conn = None
@@ -85,6 +85,20 @@ class TSQueryTracker:
         with self._lock:
             return sorted(self._participants.values(), key=lambda x: x["name"].lower())
 
+    def get_channel_id(self) -> int:
+        """Gibt den aktuell überwachten Kanal zurück."""
+        return self._channel_id
+
+    def switch_channel(self, channel_id: int):
+        """
+        Schaltet das Tracking auf einen neuen Kanal um.
+        Lädt sofort alle aktuell im neuen Kanal anwesenden Clients.
+        """
+        old = self._channel_id
+        self._channel_id = channel_id
+        logger.info("Tracking gewechselt: Kanal %d → %d", old, channel_id)
+        self._lade_aktuelle_teilnehmer()
+
     # ── Interne Methoden ──────────────────────────────────────
 
     def _lade_aktuelle_teilnehmer(self):
@@ -121,7 +135,7 @@ class TSQueryTracker:
         data = event.parsed[0] if event.parsed else {}
 
         if event_type == "notifycliententerview":
-            # Nur den konfigurierten Kanal berücksichtigen
+            # Nur den aktuell konfigurierten Kanal berücksichtigen
             ctid = int(data.get("ctid", 0))
             if self._channel_id == 0 or ctid == self._channel_id:
                 nick = data.get("client_nickname", "")
@@ -130,7 +144,6 @@ class TSQueryTracker:
                     self._handle_join(nick)
 
         elif event_type == "notifyclientleftview":
-            # Austritt wird protokolliert, aber Teilnehmer bleibt in der Liste
             nick = data.get("client_nickname", "")
             logger.debug("Verlassen: %s", nick)
 
@@ -154,12 +167,10 @@ class TSQueryTracker:
         Gibt {"name": str, "frs": str} zurück.
         """
         nick = nick.strip()
-        # Vollformat: "Vorname Nachname/FRS123" oder "Name/FRS123 (Zusatz)"
         m = re.match(r'^(.+?)/(FRS\d+)', nick, re.IGNORECASE)
         if m:
             return {
                 "name": m.group(1).strip(),
                 "frs":  m.group(2).upper(),
             }
-        # Nur Name ohne FRS
         return {"name": nick, "frs": ""}

@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 """
 TSClientControl – Steuert den laufenden TS3 Linux Client via ClientQuery-Plugin.
+TSClientMonitor  – Überwacht Client-Events (Kanalwechsel, Kick) via persistenter Verbindung.
 
-Das ClientQuery-Plugin hört auf 127.0.0.1:25639 und akzeptiert Befehle über
-eine telnet-ähnliche Verbindung.
+Das ClientQuery-Plugin hört auf 127.0.0.1:25639.
 """
 
 import os
+import re
 import socket
 import logging
 import time
+import threading
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -33,6 +35,23 @@ def _find_api_key() -> str:
     return os.environ.get("TS_CLIENT_API_KEY", "")
 
 
+def _read_response(s: socket.socket, timeout: float = _CQ_TIMEOUT) -> str:
+    """Liest vom Socket bis 'error id=' erscheint oder Timeout."""
+    s.settimeout(timeout)
+    buf = b""
+    while True:
+        try:
+            chunk = s.recv(4096)
+            if not chunk:
+                break
+            buf += chunk
+            if b"error id=" in buf:
+                break
+        except socket.timeout:
+            break
+    return buf.decode("utf-8", errors="replace")
+
+
 def _query(commands: list[str]) -> list[str]:
     """
     Öffnet eine kurze Socket-Verbindung zum ClientQuery-Plugin,
@@ -44,31 +63,15 @@ def _query(commands: list[str]) -> list[str]:
         raise RuntimeError("ClientQuery API-Key nicht gefunden.")
 
     s = socket.create_connection((_CQ_HOST, _CQ_PORT), timeout=_CQ_TIMEOUT)
-    s.settimeout(_CQ_TIMEOUT)
-
-    def recv_until_error() -> str:
-        buf = b""
-        while True:
-            try:
-                chunk = s.recv(4096)
-                if not chunk:
-                    break
-                buf += chunk
-                if b"error id=" in buf:
-                    break
-            except socket.timeout:
-                break
-        return buf.decode("utf-8", errors="replace")
-
     try:
-        recv_until_error()  # Welcome-Banner
+        _read_response(s)  # Welcome-Banner
         s.sendall(f"auth apikey={api_key}\n".encode())
-        recv_until_error()  # auth response
+        _read_response(s)  # Auth-Antwort
 
         responses = []
         for cmd in commands:
             s.sendall(f"{cmd}\n".encode())
-            responses.append(recv_until_error())
+            responses.append(_read_response(s))
 
         s.sendall(b"quit\n")
     finally:
@@ -76,8 +79,146 @@ def _query(commands: list[str]) -> list[str]:
             s.close()
         except Exception:
             pass
-
     return responses
+
+
+class TSClientMonitor:
+    """
+    Überwacht den TS3-Client via persistenter ClientQuery-Verbindung.
+
+    Erkennt:
+    - notifyclientmoved  → Bot wurde in anderen Kanal verschoben → on_moved(new_channel_id)
+    - notifyclientkicked → Bot vom Server gekickt               → on_kicked()
+    - notifyconnectstatuschange status=disconnected              → on_kicked()
+    """
+
+    def __init__(self,
+                 on_moved:  "Callable[[int], None] | None" = None,
+                 on_kicked: "Callable[[], None] | None"    = None):
+        self._on_moved  = on_moved   # callback(new_channel_id: int)
+        self._on_kicked = on_kicked  # callback()
+        self._running   = False
+        self._thread: threading.Thread | None = None
+        self._own_clid: int | None = None
+
+    def start(self):
+        """Startet den Monitor-Thread."""
+        self._running = True
+        self._thread = threading.Thread(
+            target=self._monitor_loop, daemon=True, name="ts-monitor"
+        )
+        self._thread.start()
+        logger.info("TSClientMonitor gestartet.")
+
+    def stop(self):
+        """Beendet den Monitor-Thread (nicht-blockierend)."""
+        self._running = False
+        logger.info("TSClientMonitor gestoppt.")
+
+    # ── Interner Monitor-Loop ──────────────────────────────────
+
+    def _monitor_loop(self):
+        api_key = _find_api_key()
+        if not api_key:
+            logger.error("TSClientMonitor: API-Key nicht gefunden – Monitoring deaktiviert.")
+            return
+
+        try:
+            s = socket.create_connection((_CQ_HOST, _CQ_PORT), timeout=10)
+        except Exception as e:
+            logger.error("TSClientMonitor: Verbindung zu ClientQuery fehlgeschlagen: %s", e)
+            return
+
+        try:
+            _read_response(s)  # Banner
+            s.sendall(f"auth apikey={api_key}\n".encode())
+            _read_response(s)
+
+            # Kurz warten bis TS3-Client vollständig mit Server verbunden ist
+            time.sleep(3)
+
+            # Eigene Client-ID ermitteln
+            s.sendall(b"whoami\n")
+            resp = _read_response(s)
+            m = re.search(r'\bclid=(\d+)', resp)
+            if m:
+                self._own_clid = int(m.group(1))
+                logger.info("TSClientMonitor: Eigene Client-ID: %d", self._own_clid)
+            else:
+                logger.warning(
+                    "TSClientMonitor: Client-ID nicht ermittelbar (%s) – alle Move-Events werden verarbeitet.",
+                    resp[:80]
+                )
+
+            # Events für alle Aktionen auf Server-Verbindung 1 registrieren
+            s.sendall(b"clientnotifyregister schandlerid=1 event=any\n")
+            _read_response(s)
+            logger.info("TSClientMonitor: Event-Monitoring aktiv (clid=%s).", self._own_clid)
+
+            # Event-Loop: kurzer Timeout damit _running-Flag zeitnah geprüft wird
+            s.settimeout(2.0)
+            buf = ""
+            while self._running:
+                try:
+                    chunk = s.recv(4096).decode("utf-8", errors="replace")
+                    if not chunk:
+                        logger.warning("TSClientMonitor: Verbindung unerwartet geschlossen.")
+                        self._fire_kicked()
+                        break
+                    buf += chunk
+                    while "\n" in buf:
+                        line, buf = buf.split("\n", 1)
+                        line = line.rstrip("\r").strip()
+                        if line:
+                            self._process_event(line)
+                except socket.timeout:
+                    continue
+                except Exception as e:
+                    if self._running:
+                        logger.error("TSClientMonitor: Fehler im Event-Loop: %s", e)
+                        self._fire_kicked()
+                    break
+        finally:
+            try:
+                s.close()
+            except Exception:
+                pass
+
+    def _process_event(self, line: str):
+        if not self._running:
+            return
+        logger.debug("CQ-Event: %s", line[:140])
+
+        if line.startswith("notifyclientmoved"):
+            m_clid = re.search(r'\bclid=(\d+)', line)
+            m_ctid = re.search(r'\bctid=(\d+)', line)
+            if m_clid and m_ctid:
+                clid = int(m_clid.group(1))
+                ctid = int(m_ctid.group(1))
+                if self._own_clid is None or clid == self._own_clid:
+                    logger.info("TSClientMonitor: Bot in Kanal %d verschoben.", ctid)
+                    if self._on_moved:
+                        self._on_moved(ctid)
+
+        elif line.startswith("notifyclientkicked"):
+            m_clid = re.search(r'\bclid=(\d+)', line)
+            if m_clid:
+                clid = int(m_clid.group(1))
+                if self._own_clid is None or clid == self._own_clid:
+                    logger.info("TSClientMonitor: Bot vom Server gekickt (notifyclientkicked).")
+                    self._fire_kicked()
+
+        elif "notifyconnectstatuschange" in line and "status=disconnected" in line:
+            logger.info("TSClientMonitor: Verbindungsstatus = disconnected.")
+            self._fire_kicked()
+
+    def _fire_kicked(self):
+        """Ruft on_kicked genau einmal auf (auch bei mehreren Trigger-Events)."""
+        if not self._running:
+            return
+        self._running = False  # Verhindert Doppel-Trigger
+        if self._on_kicked:
+            self._on_kicked()
 
 
 class TSClientControl:
@@ -95,14 +236,12 @@ class TSClientControl:
         Trennt zuerst eine bestehende Verbindung (falls vorhanden).
         """
         try:
-            # Bestehende Verbindung trennen
             try:
                 _query(["disconnect"])
                 time.sleep(1.5)
             except Exception:
                 pass
 
-            # Verbinden
             cmd = (
                 f"connect address={self._server_addr} port={self._server_port} "
                 f"nickname={self._nickname}"
@@ -136,6 +275,29 @@ class TSClientControl:
             return ok
         except Exception as e:
             logger.error("TS3 Client disconnect fehlgeschlagen: %s", e)
+            return False
+
+    def move_to_channel(self, channel_id: int) -> bool:
+        """
+        Bewegt den Bot in einen anderen Kanal (ohne Server-Reconnect).
+        Gibt True zurück wenn die ClientQuery-Anfrage erfolgreich war.
+        """
+        try:
+            resp = _query(["whoami"])
+            m = re.search(r'\bclid=(\d+)', resp[0] if resp else "")
+            if not m:
+                logger.warning("move_to_channel: Eigene Client-ID nicht ermittelbar.")
+                return False
+            own_clid = m.group(1)
+            resp2 = _query([f"clientmove clid={own_clid} cid={channel_id}"])
+            ok = bool(resp2 and "error id=0" in resp2[0])
+            if ok:
+                logger.info("Bot in Kanal %d verschoben (manuell).", channel_id)
+            else:
+                logger.warning("clientmove Antwort: %s", resp2)
+            return ok
+        except Exception as e:
+            logger.error("move_to_channel fehlgeschlagen: %s", e)
             return False
 
     def is_connected(self) -> bool:

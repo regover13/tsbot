@@ -181,7 +181,8 @@ def _erkenne_sprecher(segmente: list) -> list:
 # ── Claude API: Transkript den Agenda-Punkten zuordnen ─────────
 def ki_zuordnung(volltext: str, segmente: list, agenda: list, api_key: str, modell: str,
                  extra_instruktionen: str = None,
-                 teilnehmer_liste: list = None) -> list:
+                 teilnehmer_liste: list = None,
+                 kanal_wechsel: list = None) -> list:
     try:
         import anthropic
     except ImportError:
@@ -218,6 +219,20 @@ Das Transkript enthält automatisch erkannte Sprecher ({', '.join(sprecher_ids)}
 Keine Teilnehmerliste verfügbar – behalte SPRECHER_X in Zusammenfassungen bei.
 """
 
+    # ── Kanalwechsel-Block ────────────────────────────────────
+    kanal_block = ""
+    if kanal_wechsel:
+        kanal_block = "\nKANALWECHSEL WÄHREND DER SITZUNG:\n"
+        for evt in kanal_wechsel:
+            ts      = evt.get("timestamp", "")[:19].replace("T", " ")
+            von     = evt.get("from_channel", "?")
+            nach    = evt.get("to_channel", "?")
+            kanal_block += f"- {ts}: Kanal {von} → Kanal {nach}\n"
+        kanal_block += (
+            "Erwähne diese Kanalwechsel an passender Stelle im Protokoll "
+            "(z.B. als Notiz zwischen den Agenda-Punkten).\n"
+        )
+
     # ── Zusätzliche Instruktionen ─────────────────────────────
     extra_block = ""
     if extra_instruktionen and extra_instruktionen.strip():
@@ -230,7 +245,7 @@ AGENDA:
 
 TRANSKRIPT:
 {transkript_text}
-{sprecher_block}{extra_block}
+{sprecher_block}{kanal_block}{extra_block}
 Antworte NUR mit folgendem JSON:
 {{
   "agenda_punkte": [
@@ -270,7 +285,8 @@ Hinweise:
 def erstelle_protokoll(transkript_pfad: str, thema: str,
                        agenda_pfad: str = None,
                        teilnehmer_liste: list = None,
-                       extra_instruktionen: str = None):
+                       extra_instruktionen: str = None,
+                       kanal_wechsel: list = None):
     """
     Erstellt ein Word-Protokoll aus einem Transkript.
 
@@ -313,6 +329,7 @@ def erstelle_protokoll(transkript_pfad: str, thema: str,
             volltext, segmente, agenda, api_key, modell,
             extra_instruktionen=extra_instruktionen,
             teilnehmer_liste=teilnehmer_liste,
+            kanal_wechsel=kanal_wechsel or [],
         )
         if ki_punkte:
             print(f"Claude hat {len(ki_punkte)} Agenda-Punkte zugeordnet.")
@@ -349,6 +366,19 @@ def erstelle_protokoll(transkript_pfad: str, thema: str,
         t.cell(i, 1).text = wert
         t.cell(i, 0).paragraphs[0].runs[0].bold = True
     doc.add_paragraph()
+
+    # ── Kanalwechsel-Hinweis ──────────────────────────────────
+    if kanal_wechsel:
+        note = doc.add_paragraph()
+        note.add_run("Hinweis – Kanalwechsel während der Sitzung:").bold = True
+        for evt in kanal_wechsel:
+            ts   = evt.get("timestamp", "")[:19].replace("T", " ")
+            von  = evt.get("from_channel", "?")
+            nach = evt.get("to_channel", "?")
+            item = doc.add_paragraph(style="List Bullet")
+            item.add_run(f"{ts}: Kanal {von} → Kanal {nach}")
+            item.add_run(" – Teilnehmer-Tracking wurde umgeschaltet.").italic = True
+        doc.add_paragraph()
 
     # ── Inhaltsverzeichnis ─────────────────────────────────────
     doc.add_heading('Inhaltsverzeichnis', level=1)

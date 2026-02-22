@@ -253,6 +253,9 @@
         <div class="meta-item"><label>Thema</label><span id="m-thema">—</span></div>
         <div class="meta-item"><label>Dauer</label><span id="m-dauer">—</span></div>
         <div class="meta-item"><label>Teilnehmer (live)</label><span id="m-teilnehmer">—</span></div>
+        <div class="meta-item" id="m-channel-item" style="display:none">
+          <label>Aktueller Kanal</label><span id="m-channel">—</span>
+        </div>
       </div>
       <p id="error-line" class="error-line"></p>
     </div>
@@ -269,12 +272,12 @@
       <div class="field">
         <label>TeamSpeak-Kanal</label>
         <div class="channel-row">
-          <select id="f-channel" onchange="saveLastChannel()">
+          <select id="f-channel" onchange="onChannelChange()">
             <option value="">— Wird geladen… —</option>
           </select>
           <button class="channel-reload" onclick="loadChannels()" title="Kanäle neu laden">↺</button>
         </div>
-        <p class="hint">Der Bot tritt diesem Kanal bei, wenn die Aufnahme startet.</p>
+        <p class="hint" id="channel-hint">Der Bot tritt diesem Kanal bei, wenn die Aufnahme startet.</p>
       </div>
 
       <div class="field">
@@ -346,6 +349,8 @@
 
 <script>
 const LAST_CHANNEL_KEY = 'tsbot_last_channel_id';
+let _channelNames = {};   // id → name, befüllt von loadChannels()
+let _currentState = 'IDLE';
 
 // ═══════════════════════════════════════════════════════════
 // Tabs
@@ -388,6 +393,10 @@ async function loadChannels() {
       return;
     }
 
+    // Channel-Namen-Lookup aufbauen
+    _channelNames = {};
+    channels.forEach(c => { _channelNames[c.id] = c.name; });
+
     // Hierarchie aufbauen: erst Eltern, dann Kinder eingerückt
     const roots   = channels.filter(c => c.parent === 0);
     const byPid   = {};
@@ -422,6 +431,28 @@ async function loadChannels() {
 function saveLastChannel() {
   const sel = document.getElementById('f-channel');
   if (sel.value) localStorage.setItem(LAST_CHANNEL_KEY, sel.value);
+}
+
+function onChannelChange() {
+  saveLastChannel();
+  if (_currentState === 'RECORDING') {
+    switchChannelDuringRecording();
+  }
+}
+
+async function switchChannelDuringRecording() {
+  const sel = document.getElementById('f-channel');
+  const channelId = parseInt(sel.value, 10);
+  if (!channelId) return;
+  try {
+    const d = await api('/session/channel', {
+      method: 'POST',
+      body:   JSON.stringify({ channel_id: channelId }),
+    });
+    toast(d.message, 'info');
+  } catch(e) {
+    toast('Kanalwechsel fehlgeschlagen: ' + e.message, 'error');
+  }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -474,6 +505,9 @@ async function refreshStatus() {
 }
 
 function applyStatus(s) {
+  const prevState = _currentState;
+  _currentState = s.state;
+
   const badge = document.getElementById('state-badge');
   badge.textContent = s.state;
   badge.className   = 'badge s-' + s.state;
@@ -491,6 +525,31 @@ function applyStatus(s) {
     document.getElementById('m-dauer').textContent = '—';
   }
 
+  // Aktueller Kanal (nur während Aufnahme)
+  const chItem = document.getElementById('m-channel-item');
+  const isRec  = s.state === 'RECORDING';
+  if (isRec && s.current_channel_id) {
+    const chName = _channelNames[s.current_channel_id] || `#${s.current_channel_id}`;
+    document.getElementById('m-channel').textContent = chName;
+    chItem.style.display = 'block';
+
+    // Dropdown auf aktuellen Kanal synchronisieren (z.B. nach externem Move)
+    const sel = document.getElementById('f-channel');
+    if (sel.value !== String(s.current_channel_id)) {
+      sel.value = String(s.current_channel_id);
+    }
+  } else {
+    chItem.style.display = 'none';
+  }
+
+  // Dropdown-Hint je nach State
+  const hint = document.getElementById('channel-hint');
+  if (isRec) {
+    hint.textContent = 'Kanal wechseln: Dropdown ändern → Bot wechselt sofort den Kanal.';
+  } else {
+    hint.textContent = 'Der Bot tritt diesem Kanal bei, wenn die Aufnahme startet.';
+  }
+
   const errLine = document.getElementById('error-line');
   if (s.error) {
     errLine.textContent = 'Fehler: ' + s.error;
@@ -500,14 +559,18 @@ function applyStatus(s) {
   }
 
   const isIdle = ['IDLE','DONE','ERROR'].includes(s.state);
-  const isRec  = s.state === 'RECORDING';
   document.getElementById('btn-start').disabled = !isIdle;
   document.getElementById('btn-stop').disabled  = !isRec;
 
-  if (s.state === 'DONE') {
+  if (s.state === 'DONE' && prevState !== 'DONE') {
     stopPoll();
     loadProtocols();
     toast('Protokoll fertig! Siehe Tab "Protokolle".', 'ok');
+  }
+
+  // Auto-stop durch Kick: Nutzer informieren
+  if (s.state === 'ERROR' && prevState === 'RECORDING') {
+    toast('Bot wurde vom Server getrennt – Aufnahme automatisch gestoppt.', 'error');
   }
 }
 

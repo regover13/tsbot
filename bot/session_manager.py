@@ -17,11 +17,11 @@ from concurrent.futures import ThreadPoolExecutor
 
 from bot.audio_capture import AudioCapture
 from bot.ts_query import TSQueryTracker
-from bot.ts_client_control import TSClientControl
+from bot.ts_client_control import TSClientControl, TSClientMonitor
 
 logger = logging.getLogger(__name__)
 
-DATA_DIR = Path(os.environ.get("DATA_DIR", "/opt/tsbot/data"))
+DATA_DIR    = Path(os.environ.get("DATA_DIR",    "/opt/tsbot/data"))
 AGENDA_PATH = Path(os.environ.get("AGENDA_PATH", "/opt/tsbot/data/agenda.txt"))
 
 
@@ -51,7 +51,14 @@ class SessionManager:
         self._audio:     AudioCapture | None    = None
         self._tracker:   TSQueryTracker | None  = None
         self._ts_client: TSClientControl | None = None
+        self._monitor:   TSClientMonitor | None = None
         self._executor = ThreadPoolExecutor(max_workers=1)
+
+        # Kanalwechsel-Tracking
+        self._current_channel_id: int  = 0
+        self._channel_events:    list  = []
+        self._kicked_triggered:  bool  = False
+        self._loop: asyncio.AbstractEventLoop | None = None
 
     # ── Öffentliche API ───────────────────────────────────────
 
@@ -68,7 +75,6 @@ class SessionManager:
         """
         if self.state not in (State.IDLE, State.DONE, State.ERROR):
             raise RuntimeError(f"Sitzung läuft bereits (State: {self.state})")
-        # Nach DONE/ERROR automatisch zurücksetzen
         self._reset()
 
         self.session_id  = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -77,6 +83,12 @@ class SessionManager:
         self.thema       = thema
         self.started_at  = datetime.now()
         self.error_msg   = None
+        self._loop       = asyncio.get_running_loop()
+
+        cid = channel_id or int(os.environ.get("TS_CHANNEL_ID", "0"))
+        self._current_channel_id = cid
+        self._channel_events     = []
+        self._kicked_triggered   = False
 
         # Agenda speichern (aus Parameter oder Datei)
         if agenda:
@@ -88,26 +100,33 @@ class SessionManager:
 
         # Metadata
         meta = {
-            "session_id":         self.session_id,
-            "thema":              thema,
-            "started_at":         self.started_at.isoformat(),
-            "agenda":             agenda or [],
-            "agenda_file":        current_agenda,
+            "session_id":          self.session_id,
+            "thema":               thema,
+            "started_at":          self.started_at.isoformat(),
+            "agenda":              agenda or [],
+            "agenda_file":         current_agenda,
             "extra_instruktionen": extra_instruktionen or "",
+            "channel_id":          cid,
+            "channel_events":      [],
         }
         (self.session_dir / "meta.json").write_text(
             json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
         )
 
-        # TS3 Client mit Server verbinden
-        cid = channel_id or int(os.environ.get("TS_CHANNEL_ID", "0"))
+        # TS3 Client verbinden
         self._ts_client = TSClientControl()
         try:
             self._ts_client.connect(cid)
+            # Monitor nach dem Verbinden starten
+            self._monitor = TSClientMonitor(
+                on_moved=self._on_channel_moved,
+                on_kicked=self._on_kicked,
+            )
+            self._monitor.start()
         except Exception as e:
             logger.warning("TS3 Client-Verbindung fehlgeschlagen: %s", e)
 
-        # ServerQuery Tracker starten (mit gewähltem Kanal)
+        # ServerQuery Tracker starten
         self._tracker = TSQueryTracker(channel_id=cid)
         try:
             self._tracker.start()
@@ -121,16 +140,21 @@ class SessionManager:
         self._audio.start()
 
         self.state = State.RECORDING
-        logger.info("Session %s gestartet – State: RECORDING", self.session_id)
+        logger.info("Session %s gestartet – State: RECORDING (Kanal %d)", self.session_id, cid)
         return self.session_id
 
     async def stop_session(self) -> None:
         """
         Stoppt die Aufnahme und startet die Verarbeitung im Hintergrund.
-        Der State wechselt sofort zu TRANSCRIBING; die Pipeline läuft async.
         """
         if self.state != State.RECORDING:
             raise RuntimeError(f"Keine aktive Aufnahme (State: {self.state})")
+
+        # Monitor VOR dem Disconnect stoppen – verhindert dass der Disconnect
+        # nochmals einen on_kicked-Callback auslöst
+        if self._monitor:
+            self._monitor.stop()
+            self._monitor = None
 
         # Audio stoppen
         audio_path = self._audio.stop()
@@ -145,7 +169,7 @@ class SessionManager:
         )
         logger.info("%d Teilnehmer gespeichert.", len(participants))
 
-        # TS3 Client vom Server trennen
+        # TS3 Client trennen
         if self._ts_client:
             try:
                 self._ts_client.disconnect()
@@ -158,6 +182,28 @@ class SessionManager:
         # Verarbeitung im Hintergrund
         asyncio.create_task(self._verarbeitungs_pipeline(audio_path, participants))
 
+    async def switch_channel(self, new_channel_id: int) -> None:
+        """
+        Bewegt den Bot während einer Aufnahme manuell in einen anderen Kanal.
+        Schaltet auch das Teilnehmer-Tracking auf den neuen Kanal um.
+
+        Raises:
+            RuntimeError wenn keine Aufnahme aktiv
+        """
+        if self.state != State.RECORDING:
+            raise RuntimeError(f"Keine aktive Aufnahme (State: {self.state})")
+
+        if self._ts_client:
+            ok = self._ts_client.move_to_channel(new_channel_id)
+            if ok:
+                # Monitor wird notifyclientmoved empfangen und _handle_channel_move aufrufen
+                logger.info("Bot-Kanalwechsel via ClientQuery angefordert → Kanal %d", new_channel_id)
+                return
+            logger.warning("move_to_channel fehlgeschlagen – direktes Tracking-Update")
+
+        # Fallback: Tracker direkt umschalten ohne Bot-Bewegung
+        await self._handle_channel_move(new_channel_id)
+
     def get_status(self) -> dict:
         """Gibt den aktuellen Status als Dict zurück (für /status Endpoint)."""
         duration_sec = None
@@ -169,14 +215,83 @@ class SessionManager:
             participant_count = len(self._tracker.get_participant_list())
 
         return {
-            "state":             self.state,
-            "session_id":        self.session_id,
-            "thema":             self.thema,
-            "started_at":        self.started_at.isoformat() if self.started_at else None,
-            "duration_seconds":  duration_sec,
-            "participant_count": participant_count,
-            "error":             self.error_msg,
+            "state":              self.state,
+            "session_id":         self.session_id,
+            "thema":              self.thema,
+            "started_at":         self.started_at.isoformat() if self.started_at else None,
+            "duration_seconds":   duration_sec,
+            "participant_count":  participant_count,
+            "current_channel_id": self._current_channel_id if self.state == State.RECORDING else 0,
+            "channel_events":     list(self._channel_events),
+            "error":              self.error_msg,
         }
+
+    # ── Kick / Move Callbacks (aus Monitor-Thread) ─────────────
+
+    def _on_kicked(self):
+        """Callback vom Monitor-Thread: Bot wurde vom Server gekickt."""
+        if self.state != State.RECORDING:
+            return
+        if self._kicked_triggered:
+            return
+        self._kicked_triggered = True
+        logger.warning("Bot vom Server gekickt – Session wird automatisch gestoppt.")
+        if self._loop:
+            asyncio.run_coroutine_threadsafe(self._auto_stop(), self._loop)
+
+    def _on_channel_moved(self, new_channel_id: int):
+        """Callback vom Monitor-Thread: Bot wurde in anderen Kanal verschoben."""
+        if self.state != State.RECORDING:
+            return
+        if self._loop:
+            asyncio.run_coroutine_threadsafe(
+                self._handle_channel_move(new_channel_id), self._loop
+            )
+
+    async def _auto_stop(self):
+        """Stoppt die Session automatisch nach einem Kick."""
+        try:
+            await self.stop_session()
+        except RuntimeError:
+            pass
+
+    async def _handle_channel_move(self, new_channel_id: int):
+        """Verarbeitet einen Kanalwechsel (intern oder extern ausgelöst)."""
+        old_id = self._current_channel_id
+        if old_id == new_channel_id:
+            return  # Kein echter Wechsel
+
+        self._current_channel_id = new_channel_id
+        event = {
+            "type":         "channel_change",
+            "from_channel": old_id,
+            "to_channel":   new_channel_id,
+            "timestamp":    datetime.now().isoformat(),
+        }
+        self._channel_events.append(event)
+
+        # meta.json aktualisieren
+        if self.session_dir:
+            meta_path = self.session_dir / "meta.json"
+            try:
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                meta["channel_events"] = self._channel_events
+                meta_path.write_text(
+                    json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
+                )
+            except Exception as e:
+                logger.warning("meta.json Kanalwechsel-Update fehlgeschlagen: %s", e)
+
+        # Tracker auf neuen Kanal umschalten (in Thread-Pool, da Netzwerk-I/O)
+        if self._tracker:
+            try:
+                await self._loop.run_in_executor(
+                    None, self._tracker.switch_channel, new_channel_id
+                )
+            except Exception as e:
+                logger.warning("Tracker switch_channel fehlgeschlagen: %s", e)
+
+        logger.info("Kanalwechsel: %d → %d – Tracking umgeschaltet.", old_id, new_channel_id)
 
     # ── Interne Pipeline ──────────────────────────────────────
 
@@ -198,10 +313,10 @@ class SessionManager:
             logger.info("Starte Protokollerstellung...")
             self.state = State.GENERATING
 
-            # Agenda-Datei ermitteln
             meta_raw = (self.session_dir / "meta.json").read_text(encoding="utf-8")
             meta = json.loads(meta_raw)
-            agenda_file = meta.get("agenda_file")
+            agenda_file    = meta.get("agenda_file")
+            channel_events = meta.get("channel_events", [])
 
             await loop.run_in_executor(
                 self._executor,
@@ -211,6 +326,7 @@ class SessionManager:
                 agenda_file,
                 participants,
                 meta.get("extra_instruktionen", ""),
+                channel_events,
             )
 
             self.state = State.DONE
@@ -232,7 +348,8 @@ class SessionManager:
 
     def _erstelle_protokoll_sync(self, transcript_path: Path, thema: str,
                                   agenda_file: str | None, participants: list,
-                                  extra_instruktionen: str = ""):
+                                  extra_instruktionen: str = "",
+                                  channel_events: list = None):
         """Synchroner Protokoll-Generator (läuft im ThreadPoolExecutor)."""
         import sys
         sys.path.insert(0, str(Path(__file__).parent.parent / "core"))
@@ -244,15 +361,21 @@ class SessionManager:
             agenda_pfad         = agenda_file,
             teilnehmer_liste    = participants,
             extra_instruktionen = extra_instruktionen or None,
+            kanal_wechsel       = channel_events or [],
         )
 
     def _reset(self):
         """Setzt den internen Zustand für eine neue Session zurück."""
-        self.session_id  = None
-        self.session_dir = None
-        self.thema       = ""
-        self.started_at  = None
-        self.error_msg   = None
-        self._audio      = None
-        self._tracker    = None
-        self._ts_client  = None
+        self.session_id          = None
+        self.session_dir         = None
+        self.thema               = ""
+        self.started_at          = None
+        self.error_msg           = None
+        self._audio              = None
+        self._tracker            = None
+        self._ts_client          = None
+        self._monitor            = None
+        self._current_channel_id = 0
+        self._channel_events     = []
+        self._kicked_triggered   = False
+        self._loop               = None

@@ -1,5 +1,5 @@
 """
-Session-Endpoints: POST /session/start, POST /session/stop
+Session-Endpoints: POST /session/start, POST /session/stop, POST /session/channel
 """
 
 from fastapi import APIRouter, Request, HTTPException
@@ -13,6 +13,10 @@ class StartRequest(BaseModel):
     agenda:              list[str] | None = None
     extra_instruktionen: str | None = None
     channel_id:          int | None = None
+
+
+class ChannelSwitchRequest(BaseModel):
+    channel_id: int
 
 
 @router.post("/start", summary="Sitzungsaufnahme starten")
@@ -53,4 +57,23 @@ async def stop_session(request: Request):
     return {
         "session_id": manager.session_id,
         "message":    "Aufnahme gestoppt – Verarbeitung läuft im Hintergrund.",
+    }
+
+
+@router.post("/channel", summary="Kanal während der Aufnahme wechseln")
+async def switch_channel(body: ChannelSwitchRequest, request: Request):
+    """
+    Bewegt den Bot in einen anderen TS3-Kanal und schaltet das
+    Teilnehmer-Tracking um. Nur während einer aktiven Aufnahme möglich.
+    Der Kanalwechsel wird im Protokoll vermerkt.
+    """
+    manager = request.app.state.manager
+    try:
+        await manager.switch_channel(body.channel_id)
+    except RuntimeError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+    return {
+        "channel_id": body.channel_id,
+        "message":    f"Bot in Kanal {body.channel_id} verschoben – Tracking umgeschaltet.",
     }
