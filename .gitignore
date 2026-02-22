@@ -1,5 +1,6 @@
 # API-Key und persönliche Konfiguration - NIEMALS committen!
 config.txt
+config/config.env
 
 # Aufnahmen und generierte Dateien
 *.mp3
@@ -11,11 +12,21 @@ Protokoll_*.docx
 # TeamSpeak Screenshots
 *.png
 
+# Session-Daten (Audio, Transkripte, Protokolle)
+data/sessions/
+
 # Python Cache
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
+.venv/
+venv/
 
 # Windows
 Thumbs.db
 ~$*
+
+# Logs
+*.log
+logs/

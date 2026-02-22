@@ -1,0 +1,20 @@
+[Unit]
+Description=TSBot – PulseAudio Null-Sink
+After=network.target
+Before=tsbot-api.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=tsbot
+Group=tsbot
+# Umgebungsvariablen aus config.env laden
+EnvironmentFile=/opt/tsbot/config/config.env
+ExecStart=/opt/tsbot/scripts/start_pulseaudio.sh
+ExecStop=pulseaudio --kill
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=tsbot-pulseaudio
+
+[Install]
+WantedBy=multi-user.target

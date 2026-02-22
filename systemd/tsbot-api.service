@@ -1,0 +1,29 @@
+[Unit]
+Description=TSBot – FastAPI Web-Interface
+After=network.target tsbot-pulseaudio.service
+Requires=tsbot-pulseaudio.service
+
+[Service]
+Type=simple
+User=tsbot
+Group=tsbot
+WorkingDirectory=/opt/tsbot
+# Umgebungsvariablen aus config.env laden
+EnvironmentFile=/opt/tsbot/config/config.env
+ExecStart=/opt/tsbot/venv/bin/uvicorn api.main:app \
+    --host 0.0.0.0 \
+    --port 8080 \
+    --log-level info
+Restart=on-failure
+RestartSec=5s
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=tsbot-api
+
+# Sicherheits-Härtung
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

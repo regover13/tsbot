@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TSBot – Dashboard</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0f1117;
+      --surface:  #1a202c;
+      --border:   #2d3748;
+      --muted:    #718096;
+      --text:     #e2e8f0;
+      --blue:     #63b3ed;
+      --green:    #68d391;
+      --red:      #fc8181;
+      --orange:   #f6ad55;
+    }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 1.5rem 1rem 3rem;
+    }
+
+    header { text-align: center; margin-bottom: 1.5rem; }
+    header h1 { font-size: 1.7rem; color: var(--blue); }
+    header p  { color: var(--muted); font-size: 0.85rem; margin-top: 0.2rem; }
+
+    /* ── Tabs ─────────────────────────────────────── */
+    .tabs {
+      display: flex;
+      gap: 0.25rem;
+      width: 100%;
+      max-width: 640px;
+      margin-bottom: 1.25rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .tab-btn {
+      background: none;
+      border: none;
+      color: var(--muted);
+      padding: 0.6rem 1.1rem;
+      font-size: 0.9rem;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .tab-btn.active { color: var(--blue); border-bottom-color: var(--blue); }
+    .tab-btn:hover:not(.active) { color: var(--text); }
+
+    .tab-panel { display: none; width: 100%; max-width: 640px; }
+    .tab-panel.active { display: block; }
+
+    /* ── Card ─────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 1.25rem;
+    }
+    .card h2 {
+      font-size: 0.78rem;
+      color: var(--blue);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 1rem;
+    }
+
+    /* ── Status badge ─────────────────────────────── */
+    .badge {
+      display: inline-block;
+      padding: 0.3rem 0.85rem;
+      border-radius: 9999px;
+      font-weight: 700;
+      font-size: 0.82rem;
+      letter-spacing: 0.04em;
+    }
+    .s-IDLE         { background: #2d3748; color: #a0aec0; }
+    .s-RECORDING    { background: #742a2a; color: var(--red);    animation: pulse 1.5s infinite; }
+    .s-TRANSCRIBING { background: #744210; color: var(--orange); }
+    .s-GENERATING   { background: #1a365d; color: var(--blue);  }
+    .s-DONE         { background: #1c4532; color: var(--green);  }
+    .s-ERROR        { background: #742a2a; color: var(--red);    }
+
+    @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.55; } }
+
+    /* ── Meta grid ────────────────────────────────── */
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.8rem;
+      margin-top: 0.9rem;
+    }
+    .meta-item label { font-size: 0.72rem; color: var(--muted); display: block; margin-bottom: 0.15rem; }
+    .meta-item span  { font-size: 0.95rem; font-weight: 500; }
+
+    /* ── Form fields ──────────────────────────────── */
+    .field { margin-top: 0.9rem; }
+    .field label { display: block; font-size: 0.78rem; color: var(--muted); margin-bottom: 0.3rem; }
+    input[type=text], textarea, select {
+      width: 100%;
+      background: #2d3748;
+      border: 1px solid #4a5568;
+      border-radius: 6px;
+      color: var(--text);
+      padding: 0.5rem 0.75rem;
+      font-size: 0.92rem;
+      outline: none;
+      transition: border-color 0.2s;
+      font-family: inherit;
+    }
+    input[type=text]:focus, textarea:focus { border-color: var(--blue); }
+    textarea { resize: vertical; min-height: 90px; }
+
+    .hint { font-size: 0.75rem; color: var(--muted); margin-top: 0.3rem; }
+
+    /* ── Buttons ──────────────────────────────────── */
+    .btn-row { display: flex; gap: 0.6rem; margin-top: 1.1rem; flex-wrap: wrap; }
+    .btn {
+      display: inline-flex; align-items: center; gap: 0.35rem;
+      padding: 0.55rem 1.2rem;
+      border: none; border-radius: 7px;
+      font-size: 0.9rem; font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+    .btn:active { transform: scale(0.97); }
+    .btn:disabled { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
+    .btn-green  { background: #276749; color: #c6f6d5; }
+    .btn-red    { background: #9b2c2c; color: #fed7d7; }
+    .btn-blue   { background: #2b4c7e; color: #bee3f8; }
+    .btn-ghost  { background: var(--border); color: var(--text); }
+
+    /* ── Agenda editor ────────────────────────────── */
+    #agenda-list { list-style: none; }
+    #agenda-list li {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.35rem 0;
+      border-bottom: 1px solid var(--border);
+    }
+    #agenda-list li:last-child { border-bottom: none; }
+    #agenda-list .drag-handle {
+      color: var(--muted); cursor: grab; font-size: 1rem; user-select: none;
+      flex-shrink: 0;
+    }
+    #agenda-list input[type=text] { flex: 1; padding: 0.3rem 0.5rem; font-size: 0.9rem; }
+    #agenda-list .del-btn {
+      background: none; border: none; color: #9b2c2c; cursor: pointer;
+      font-size: 1.1rem; line-height: 1; flex-shrink: 0;
+      opacity: 0.7; transition: opacity 0.15s;
+    }
+    #agenda-list .del-btn:hover { opacity: 1; }
+
+    .add-punkt-row { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
+    .add-punkt-row input { flex: 1; }
+
+    /* ── Protocol list ────────────────────────────── */
+    #protocol-list { list-style: none; }
+    #protocol-list li {
+      padding: 0.7rem 0;
+      border-bottom: 1px solid var(--border);
+    }
+    #protocol-list li:last-child { border-bottom: none; }
+    .prot-title  { font-weight: 600; font-size: 0.95rem; }
+    .prot-meta   { font-size: 0.75rem; color: var(--muted); margin: 0.2rem 0 0.5rem; }
+    .prot-links  { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+    .prot-links a {
+      font-size: 0.78rem; color: var(--blue); text-decoration: none;
+      padding: 0.2rem 0.55rem; border: 1px solid #2b6cb0; border-radius: 5px;
+    }
+    .prot-links a:hover { background: #2b6cb0; }
+    .empty-hint { color: var(--muted); font-size: 0.88rem; padding: 0.8rem 0; text-align: center; }
+
+    /* ── Error line ───────────────────────────────── */
+    .error-line { color: var(--red); font-size: 0.82rem; margin-top: 0.6rem; display: none; }
+
+    /* ── Toast ────────────────────────────────────── */
+    #toast {
+      position: fixed; bottom: 1.25rem; right: 1.25rem;
+      background: #2d3748; color: var(--text);
+      padding: 0.65rem 1.1rem; border-radius: 8px;
+      box-shadow: 0 4px 14px rgba(0,0,0,.5);
+      font-size: 0.88rem; opacity: 0; pointer-events: none;
+      transition: opacity 0.25s; max-width: 280px;
+      border-left: 3px solid transparent;
+    }
+    #toast.show   { opacity: 1; }
+    #toast.ok     { border-left-color: var(--green); }
+    #toast.error  { border-left-color: var(--red); }
+    #toast.info   { border-left-color: var(--blue); }
+
+    /* ── Spinner ──────────────────────────────────── */
+    .spinner {
+      display: inline-block; width: 12px; height: 12px;
+      border: 2px solid rgba(255,255,255,.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>TSBot</h1>
+    <p>TeamSpeak Aufnahme &amp; Protokoll-Generator</p>
+  </header>
+
+  <!-- Tab-Navigation -->
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('aufnahme', this)">Aufnahme</button>
+    <button class="tab-btn"       onclick="switchTab('agenda',   this)">Agenda</button>
+    <button class="tab-btn"       onclick="switchTab('protokolle', this)">Protokolle</button>
+  </div>
+
+  <!-- ═══════════════ TAB: AUFNAHME ═══════════════ -->
+  <div id="tab-aufnahme" class="tab-panel active">
+
+    <!-- Status -->
+    <div class="card">
+      <h2>Status</h2>
+      <span id="state-badge" class="badge s-IDLE">IDLE</span>
+      <div class="meta-grid">
+        <div class="meta-item"><label>Session-ID</label><span id="m-session">—</span></div>
+        <div class="meta-item"><label>Thema</label><span id="m-thema">—</span></div>
+        <div class="meta-item"><label>Dauer</label><span id="m-dauer">—</span></div>
+        <div class="meta-item"><label>Teilnehmer (live)</label><span id="m-teilnehmer">—</span></div>
+      </div>
+      <p id="error-line" class="error-line"></p>
+    </div>
+
+    <!-- Steuerung -->
+    <div class="card">
+      <h2>Neue Sitzung starten</h2>
+
+      <div class="field">
+        <label>Thema / Titel der Sitzung *</label>
+        <input type="text" id="f-thema" placeholder="z.B. FRS Mitgliederversammlung Februar 2026">
+      </div>
+
+      <div class="field">
+        <label>Agenda für diese Sitzung</label>
+        <textarea id="f-agenda-override" rows="4"
+          placeholder="Leer lassen = Server-Agenda wird verwendet (Tab &quot;Agenda&quot;).&#10;&#10;Einen Punkt pro Zeile – überschreibt nur für diese Sitzung."></textarea>
+        <p class="hint">Leer = gespeicherte Server-Agenda. Befüllen = nur für diese Sitzung.</p>
+      </div>
+
+      <div class="field">
+        <label>Zusätzliche Instruktionen für die Protokollerstellung</label>
+        <textarea id="f-extra" rows="3"
+          placeholder="z.B.: Schreibe Beschlüsse besonders hervor. Ignoriere Small Talk. Verwende förmliche Sprache."></textarea>
+        <p class="hint">Optionaler Freitext – wird direkt an Claude angehängt.</p>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-green" id="btn-start" onclick="startSession()">
+          ▶ Aufnahme starten
+        </button>
+        <button class="btn btn-red" id="btn-stop" onclick="stopSession()" disabled>
+          ■ Aufnahme stoppen
+        </button>
+      </div>
+    </div>
+
+  </div><!-- /tab-aufnahme -->
+
+  <!-- ═══════════════ TAB: AGENDA ═══════════════ -->
+  <div id="tab-agenda" class="tab-panel">
+    <div class="card">
+      <h2>Server-Agenda bearbeiten</h2>
+      <p class="hint" style="margin-bottom:1rem">
+        Diese Agenda wird für jede neue Sitzung verwendet, sofern beim Start keine eigene angegeben wird.
+      </p>
+
+      <ul id="agenda-list">
+        <!-- dynamisch befüllt -->
+      </ul>
+
+      <div class="add-punkt-row">
+        <input type="text" id="neuer-punkt" placeholder="Neuer Agenda-Punkt…"
+               onkeydown="if(event.key==='Enter') addPunkt()">
+        <button class="btn btn-ghost" onclick="addPunkt()">+ Hinzufügen</button>
+      </div>
+
+      <div class="btn-row" style="margin-top:1.2rem">
+        <button class="btn btn-blue" onclick="saveAgenda()">
+          💾 Agenda speichern
+        </button>
+        <button class="btn btn-ghost" onclick="loadAgenda()">
+          ↺ Neu laden
+        </button>
+      </div>
+    </div>
+  </div><!-- /tab-agenda -->
+
+  <!-- ═══════════════ TAB: PROTOKOLLE ═══════════ -->
+  <div id="tab-protokolle" class="tab-panel">
+    <div class="card">
+      <h2>Protokolle &amp; Aufnahmen</h2>
+      <ul id="protocol-list">
+        <li><p class="empty-hint">Wird geladen…</p></li>
+      </ul>
+    </div>
+  </div><!-- /tab-protokolle -->
+
+  <div id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+// Tabs
+// ═══════════════════════════════════════════════════════════
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  btn.classList.add('active');
+  if (name === 'agenda')     loadAgenda();
+  if (name === 'protokolle') loadProtocols();
+}
+
+// ═══════════════════════════════════════════════════════════
+// API Helper
+// ═══════════════════════════════════════════════════════════
+async function api(url, options = {}) {
+  const res = await fetch(url, {
+    headers: { 'Content-Type': 'application/json' },
+    ...options,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+  return data;
+}
+
+// ═══════════════════════════════════════════════════════════
+// Session / Status
+// ═══════════════════════════════════════════════════════════
+let _poll = null;
+
+async function startSession() {
+  const thema = document.getElementById('f-thema').value.trim();
+  if (!thema) { toast('Bitte ein Thema eingeben.', 'error'); return; }
+
+  const agendaRaw = document.getElementById('f-agenda-override').value.trim();
+  const agenda = agendaRaw ? agendaRaw.split('\n').map(l => l.trim()).filter(Boolean) : null;
+  const extra  = document.getElementById('f-extra').value.trim() || null;
+
+  setBtn('start', true);
+  try {
+    const d = await api('/session/start', {
+      method: 'POST',
+      body:   JSON.stringify({ thema, agenda, extra_instruktionen: extra }),
+    });
+    toast(d.message, 'ok');
+    startPoll();
+  } catch(e) {
+    toast(e.message, 'error');
+  } finally {
+    setBtn('start', false);
+  }
+}
+
+async function stopSession() {
+  setBtn('stop', true);
+  try {
+    const d = await api('/session/stop', { method: 'POST' });
+    toast(d.message, 'info');
+  } catch(e) {
+    toast(e.message, 'error');
+    setBtn('stop', false);
+  }
+}
+
+async function refreshStatus() {
+  try {
+    const s = await api('/status');
+    applyStatus(s);
+  } catch(e) { /* silent */ }
+}
+
+function applyStatus(s) {
+  const badge = document.getElementById('state-badge');
+  badge.textContent = s.state;
+  badge.className   = 'badge s-' + s.state;
+
+  document.getElementById('m-session').textContent    = s.session_id  || '—';
+  document.getElementById('m-thema').textContent      = s.thema       || '—';
+  document.getElementById('m-teilnehmer').textContent = s.participant_count ?? '—';
+
+  if (s.duration_seconds != null) {
+    const m = Math.floor(s.duration_seconds / 60);
+    const sec = s.duration_seconds % 60;
+    document.getElementById('m-dauer').textContent =
+      String(m).padStart(2,'0') + ':' + String(sec).padStart(2,'0');
+  } else {
+    document.getElementById('m-dauer').textContent = '—';
+  }
+
+  const errLine = document.getElementById('error-line');
+  if (s.error) {
+    errLine.textContent = 'Fehler: ' + s.error;
+    errLine.style.display = 'block';
+  } else {
+    errLine.style.display = 'none';
+  }
+
+  const isIdle = ['IDLE','DONE','ERROR'].includes(s.state);
+  const isRec  = s.state === 'RECORDING';
+  document.getElementById('btn-start').disabled = !isIdle;
+  document.getElementById('btn-stop').disabled  = !isRec;
+
+  if (s.state === 'DONE') {
+    stopPoll();
+    loadProtocols();
+    toast('Protokoll fertig! Siehe Tab "Protokolle".', 'ok');
+  }
+}
+
+function startPoll() {
+  if (_poll) return;
+  _poll = setInterval(refreshStatus, 3000);
+}
+function stopPoll() { clearInterval(_poll); _poll = null; }
+
+function setBtn(id, loading) {
+  document.getElementById('btn-' + id).disabled = loading;
+}
+
+// ═══════════════════════════════════════════════════════════
+// Agenda Editor
+// ═══════════════════════════════════════════════════════════
+let _agendaPunkte = [];
+
+async function loadAgenda() {
+  try {
+    const d = await api('/agenda');
+    _agendaPunkte = d.punkte || [];
+    renderAgenda();
+  } catch(e) {
+    toast('Agenda laden fehlgeschlagen: ' + e.message, 'error');
+  }
+}
+
+function renderAgenda() {
+  const ul = document.getElementById('agenda-list');
+  ul.innerHTML = '';
+  _agendaPunkte.forEach((p, i) => {
+    const li = document.createElement('li');
+    li.dataset.index = i;
+    li.draggable = true;
+    li.innerHTML = `
+      <span class="drag-handle" title="Ziehen zum Sortieren">⠿</span>
+      <input type="text" value="${escHtml(p)}" oninput="_agendaPunkte[${i}]=this.value">
+      <button class="del-btn" onclick="deletePunkt(${i})" title="Entfernen">✕</button>
+    `;
+    // Drag-and-drop
+    li.addEventListener('dragstart', dragStart);
+    li.addEventListener('dragover',  dragOver);
+    li.addEventListener('drop',      dragDrop);
+    ul.appendChild(li);
+  });
+  if (!_agendaPunkte.length) {
+    ul.innerHTML = '<li><p class="empty-hint">Noch keine Agenda-Punkte. Unten hinzufügen.</p></li>';
+  }
+}
+
+function addPunkt() {
+  const inp = document.getElementById('neuer-punkt');
+  const val = inp.value.trim();
+  if (!val) return;
+  _agendaPunkte.push(val);
+  inp.value = '';
+  renderAgenda();
+}
+
+function deletePunkt(i) {
+  _agendaPunkte.splice(i, 1);
+  renderAgenda();
+}
+
+async function saveAgenda() {
+  // Aktuelle Input-Werte einlesen (falls jemand direkt getippt hat)
+  document.querySelectorAll('#agenda-list input[type=text]').forEach((inp, i) => {
+    _agendaPunkte[i] = inp.value;
+  });
+  const punkte = _agendaPunkte.filter(p => p.trim());
+  try {
+    const d = await api('/agenda', {
+      method: 'PUT',
+      body:   JSON.stringify({ punkte }),
+    });
+    _agendaPunkte = d.punkte;
+    renderAgenda();
+    toast(d.message, 'ok');
+  } catch(e) {
+    toast('Speichern fehlgeschlagen: ' + e.message, 'error');
+  }
+}
+
+// ── Drag-and-Drop ────────────────────────────────
+let _dragIdx = null;
+function dragStart(e) { _dragIdx = +e.currentTarget.dataset.index; }
+function dragOver(e)  { e.preventDefault(); }
+function dragDrop(e)  {
+  e.preventDefault();
+  const target = +e.currentTarget.dataset.index;
+  if (_dragIdx === null || _dragIdx === target) return;
+  const moved = _agendaPunkte.splice(_dragIdx, 1)[0];
+  _agendaPunkte.splice(target, 0, moved);
+  _dragIdx = null;
+  renderAgenda();
+}
+
+// ═══════════════════════════════════════════════════════════
+// Protokoll-Liste
+// ═══════════════════════════════════════════════════════════
+async function loadProtocols() {
+  try {
+    const d = await api('/protocols/');
+    renderProtocols(d.sessions || []);
+  } catch(e) { /* silent */ }
+}
+
+function renderProtocols(sessions) {
+  const ul = document.getElementById('protocol-list');
+  if (!sessions.length) {
+    ul.innerHTML = '<li><p class="empty-hint">Noch keine abgeschlossenen Sitzungen.</p></li>';
+    return;
+  }
+  ul.innerHTML = sessions.map(s => {
+    const links = [
+      ...s.protokolle.map(f  => `<a href="/protocols/${s.session_id}/${f}"  download>${f}</a>`),
+      ...s.transkripte.map(f => `<a href="/protocols/${s.session_id}/${f}" download>${f}</a>`),
+    ].join('');
+    const dateStr = s.started_at ? s.started_at.slice(0,10) : '';
+    return `<li>
+      <div class="prot-title">${escHtml(s.thema || '(kein Thema)')}</div>
+      <div class="prot-meta">${s.session_id} · ${dateStr}</div>
+      <div class="prot-links">${links || '<span style="color:var(--muted);font-size:.78rem">Keine Dateien</span>'}</div>
+    </li>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════════════════
+// Toast
+// ═══════════════════════════════════════════════════════════
+let _toastTimer = null;
+function toast(msg, type = 'ok') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'show ' + type;
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => { el.className = ''; }, 4500);
+}
+
+// ═══════════════════════════════════════════════════════════
+// Utilities
+// ═══════════════════════════════════════════════════════════
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ═══════════════════════════════════════════════════════════
+// Init
+// ═══════════════════════════════════════════════════════════
+(function init() {
+  refreshStatus();
+  startPoll();
+  loadProtocols();
+})();
+</script>
+</body>
+</html>

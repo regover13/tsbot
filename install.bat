@@ -92,9 +92,13 @@ echo.
 echo ================================================
 echo  Installation abgeschlossen!
 echo.
-echo  GPU-Status pruefen:
-python -c "import torch; print('  CUDA verfuegbar:', torch.cuda.is_available()); print('  GPU:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'keine')"
+echo  GPU-Status:
+python -c "import torch; print('  CUDA:', torch.cuda.is_available()); print('  GPU:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'keine')"
 echo.
-echo  Naechster Schritt: 2_transkribieren.bat
+echo  Naechste Schritte:
+echo    1. config.txt anlegen (Vorlage: config.example.txt)
+echo    2. ANTHROPIC_API_KEY eintragen
+echo    3. agenda.txt vor jeder Sitzung anpassen
+echo    4. 1_aufnahme_starten.bat zum Aufnehmen
 echo ================================================
 pause

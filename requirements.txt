@@ -1,0 +1,36 @@
+# =============================================================================
+# TSBot Python-Abhängigkeiten (Linux-Server)
+#
+# Installation:
+#   pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
+#
+# Hinweis: torch (CPU-only) = ~2,5 GB Download, nur einmalig nötig.
+# =============================================================================
+
+# Whisper + PyTorch (CPU-only für VPS ohne GPU)
+openai-whisper
+torch --extra-index-url https://download.pytorch.org/whl/cpu
+
+# Optionale Sprechertrennung (USE_DIARIZATION=true)
+# whisperx kombiniert Whisper + Alignment + pyannote Diarization.
+# Voraussetzung: HuggingFace-Account + Token (kostenlos), dann einmalig
+# die pyannote-Modell-Lizenzen akzeptieren:
+#   https://huggingface.co/pyannote/speaker-diarization-3.1
+#   https://huggingface.co/pyannote/segmentation-3.0
+whisperx
+
+# Protokoll-Generator
+anthropic
+python-docx
+
+# Web-API
+fastapi
+uvicorn[standard]
+aiofiles
+python-multipart
+
+# TeamSpeak ServerQuery
+ts3
+
+# Konfiguration
+python-dotenv
