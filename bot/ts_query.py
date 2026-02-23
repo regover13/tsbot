@@ -59,11 +59,12 @@ class TSQueryTracker:
         )
         self._conn.use(sid=self._server_id)
 
-        # Sofort aktuelle Teilnehmer im Kanal laden
+        # Sofort aktuelle Teilnehmer laden (alle auf dem Server)
         self._lade_aktuelle_teilnehmer()
 
-        # Event-Benachrichtigungen aktivieren
+        # Event-Benachrichtigungen aktivieren (doppelt für maximale Abdeckung)
         self._conn.servernotifyregister(event="server")
+        self._conn.servernotifyregister(event="channel", id=0)
         self._running = True
 
         # Hintergrund-Thread für eingehende Events
@@ -124,25 +125,29 @@ class TSQueryTracker:
     # ── Interne Methoden ──────────────────────────────────────
 
     def _lade_aktuelle_teilnehmer(self):
-        """Lädt alle aktuell im konfigurierten Kanal befindlichen Clients."""
+        """Lädt alle aktuell auf dem Server verbundenen Clients (kanalunabhängig)."""
         try:
             resp = self._conn.clientlist()
             for c in resp.parsed:
                 if c.get("client_type") == "0":  # 0 = normaler Client, 1 = Query
-                    cid = int(c.get("cid", 0))
-                    if self._channel_id == 0 or cid == self._channel_id:
-                        self._handle_join(c.get("client_nickname", ""))
+                    self._handle_join(c.get("client_nickname", ""))
         except Exception as e:
             logger.warning("Fehler beim Laden aktueller Clients: %s", e)
 
     def _event_loop(self):
         """Blockierender Event-Loop im Hintergrund-Thread."""
         import ts3
+        _poll_zaehler = 0
         while self._running:
             try:
                 event = self._conn.wait_for_event(timeout=5.0)
                 self._verarbeite_event(event)
-            except ts3.TS3TimeoutError:
+            except ts3.query.TS3TimeoutError:
+                # Alle 30 Sekunden Clientliste neu einlesen (Fallback für verpasste Events)
+                _poll_zaehler += 1
+                if _poll_zaehler >= 6:
+                    _poll_zaehler = 0
+                    self._lade_aktuelle_teilnehmer()
                 continue
             except Exception as e:
                 if self._running:
@@ -157,13 +162,10 @@ class TSQueryTracker:
         data = event.parsed[0] if event.parsed else {}
 
         if event_type == "notifycliententerview":
-            # Nur den aktuell konfigurierten Kanal berücksichtigen
-            ctid = int(data.get("ctid", 0))
-            if self._channel_id == 0 or ctid == self._channel_id:
-                nick = data.get("client_nickname", "")
-                client_type = data.get("client_type", "1")
-                if client_type == "0":
-                    self._handle_join(nick)
+            nick = data.get("client_nickname", "")
+            client_type = data.get("client_type", "1")
+            if client_type == "0":
+                self._handle_join(nick)
 
         elif event_type == "notifyclientleftview":
             nick = data.get("client_nickname", "")
@@ -171,6 +173,9 @@ class TSQueryTracker:
 
     def _handle_join(self, nickname: str):
         """Fügt einen Teilnehmer zur akkumulierten Liste hinzu."""
+        bot_nick = os.environ.get("TS_NICKNAME", "FriesenFliegerBot")
+        if nickname.strip() == bot_nick:
+            return
         parsed = self._parse_nickname(nickname)
         if not parsed["name"]:
             return

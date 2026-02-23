@@ -150,8 +150,10 @@ class SessionManager:
         if self.state != State.RECORDING:
             raise RuntimeError(f"Keine aktive Aufnahme (State: {self.state})")
 
-        # Monitor VOR dem Disconnect stoppen – verhindert dass der Disconnect
-        # nochmals einen on_kicked-Callback auslöst
+        # State sofort setzen – blockiert alle späten Callbacks (Ghost-Events)
+        # bevor Monitor/Client getrennt werden
+        self.state = State.TRANSCRIBING
+
         if self._monitor:
             self._monitor.stop()
             self._monitor = None
@@ -205,8 +207,6 @@ class SessionManager:
                 logger.warning("TS3 Client-Trennung fehlgeschlagen: %s", e)
             self._ts_client = None
 
-        self.state = State.TRANSCRIBING
-
         # Verarbeitung im Hintergrund
         asyncio.create_task(self._verarbeitungs_pipeline(audio_path, participants))
 
@@ -224,12 +224,14 @@ class SessionManager:
         if self._ts_client:
             ok = self._ts_client.move_to_channel(new_channel_id)
             if ok:
-                # Monitor wird notifyclientmoved empfangen und _handle_channel_move aufrufen
                 logger.info("Bot-Kanalwechsel via ClientQuery angefordert → Kanal %d", new_channel_id)
-                return
-            logger.warning("move_to_channel fehlgeschlagen – direktes Tracking-Update")
+            else:
+                logger.warning("move_to_channel fehlgeschlagen – Tracking trotzdem umschalten")
 
-        # Fallback: Tracker direkt umschalten ohne Bot-Bewegung
+        # Direkt aufrufen statt auf Monitor-Callback zu warten –
+        # verhindert dass das Event erst nach stop_session verarbeitet wird.
+        # Ein möglicher doppelter Monitor-Callback wird durch die
+        # old_id == new_channel_id Prüfung in _handle_channel_move abgefangen.
         await self._handle_channel_move(new_channel_id)
 
     def get_status(self) -> dict:
@@ -285,9 +287,16 @@ class SessionManager:
 
     async def _handle_channel_move(self, new_channel_id: int):
         """Verarbeitet einen Kanalwechsel (intern oder extern ausgelöst)."""
+        if self.state != State.RECORDING:
+            return  # Session bereits gestoppt – kein Ghost-Event schreiben
+
         old_id = self._current_channel_id
         if old_id == new_channel_id:
-            return  # Kein echter Wechsel
+            return  # Kein echter Wechsel (z.B. doppelter Monitor-Callback)
+
+        # Kanal-ID sofort aktualisieren – vor dem ersten await,
+        # damit parallele Aufrufe den neuen Wert sehen
+        self._current_channel_id = new_channel_id
 
         # Kanalnamen auflösen
         old_name = str(old_id)
@@ -302,8 +311,6 @@ class SessionManager:
                 )
             except Exception as e:
                 logger.warning("Kanalnamen konnten nicht aufgelöst werden: %s", e)
-
-        self._current_channel_id = new_channel_id
         event = {
             "type":             "channel_change",
             "from_channel":     old_id,

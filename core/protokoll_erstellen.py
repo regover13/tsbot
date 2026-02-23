@@ -182,7 +182,8 @@ def _erkenne_sprecher(segmente: list) -> list:
 def ki_zuordnung(volltext: str, segmente: list, agenda: list, api_key: str, modell: str,
                  extra_instruktionen: str = None,
                  teilnehmer_liste: list = None,
-                 kanal_wechsel: list = None) -> list:
+                 kanal_wechsel: list = None,
+                 teilnehmer_pro_kanal: dict = None) -> list:
     try:
         import anthropic
     except ImportError:
@@ -343,6 +344,7 @@ def erstelle_protokoll(transkript_pfad: str, thema: str,
             extra_instruktionen=extra_instruktionen,
             teilnehmer_liste=teilnehmer_liste,
             kanal_wechsel=kanal_wechsel or [],
+            teilnehmer_pro_kanal=teilnehmer_pro_kanal,
         )
         if ki_punkte:
             print(f"Claude hat {len(ki_punkte)} Agenda-Punkte zugeordnet.")

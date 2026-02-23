@@ -98,7 +98,7 @@ cd /opt/tsbot
 ```bash
 apt-get update
 apt-get install -y \
-    python3.11 python3.11-venv python3-pip \
+    python3.12 python3.12-venv python3-pip \
     ffmpeg \
     pulseaudio pulseaudio-utils \
     xvfb x11vnc \
@@ -124,7 +124,7 @@ chown -R tsbot:tsbot /opt/tsbot
 > **Hinweis:** `torch` (CPU-only) ist ~2,5 GB Download. Einmalig, danach gecacht.
 
 ```bash
-sudo -u tsbot python3.11 -m venv /opt/tsbot/venv
+sudo -u tsbot python3.12 -m venv /opt/tsbot/venv
 sudo -u tsbot /opt/tsbot/venv/bin/pip install --upgrade pip
 
 # CPU-only PyTorch + alle Abhängigkeiten
@@ -600,6 +600,20 @@ journalctl -u tsbot-api -n 50 --no-pager
 
 HF_TOKEN in `config.env` fehlt oder ist ungültig. Lizenzen auf HuggingFace akzeptiert?
 Prüfen: https://huggingface.co/pyannote/speaker-diarization-3.1
+
+### Diarization: „keine Sprecher zugewiesen" im Transkript
+
+Tritt auf wenn pyannote das Audio nicht direkt dekodieren kann (torchcodec-Fehler im Log).
+Das wird automatisch umgangen – das Audio wird als vorgeladener Tensor übergeben statt als
+Dateipfad. Falls das Problem weiterhin besteht:
+
+```bash
+# whisperx auf aktuelle Version aktualisieren:
+/opt/tsbot/venv/bin/pip install --upgrade whisperx
+```
+
+Kürzere Aufnahmen (< 2 min) können 0 Sprecher liefern, weil pyannote zu wenig
+Audiomaterial zur Trennung hat. Das ist kein Fehler, sondern ein Modell-Limit.
 
 ---
 
