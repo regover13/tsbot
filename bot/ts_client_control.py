@@ -248,19 +248,28 @@ class TSClientControl:
             )
             if self._server_pass:
                 cmd += f" password={self._server_pass}"
-            if channel_id:
-                cmd += f" channel={channel_id}"
 
             resp = _query([cmd])
             ok = resp and "error id=0" in resp[0]
-            if ok:
-                logger.info(
-                    "TS3 Client verbunden: %s:%d Kanal %d",
-                    self._server_addr, self._server_port, channel_id,
-                )
-            else:
+            if not ok:
                 logger.warning("TS3 Client connect Antwort: %s", resp)
-            return ok
+                return False
+
+            logger.info(
+                "TS3 Client verbunden: %s:%d",
+                self._server_addr, self._server_port,
+            )
+
+            # Kanal per clientmove ansteuern (connect channel= erwartet Namen, nicht ID)
+            if channel_id:
+                time.sleep(3)  # Warten bis Client vollständig verbunden ist
+                moved = self.move_to_channel(channel_id)
+                if moved:
+                    logger.info("Bot in Zielkanal %d verschoben.", channel_id)
+                else:
+                    logger.warning("Kanalwechsel zu %d fehlgeschlagen – Bot bleibt im Standard-Kanal.", channel_id)
+
+            return True
         except Exception as e:
             logger.error("TS3 Client connect fehlgeschlagen: %s", e)
             return False

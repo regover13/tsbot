@@ -35,6 +35,7 @@ class TSQueryTracker:
 
         # Akkumulierte Teilnehmer: key → {"name": str, "frs": str, "joined_at": str}
         self._participants: dict[str, dict] = {}
+        self._participants_by_channel: dict[int, list] = {}  # Abgeschlossene Kanäle
         self._lock = threading.Lock()
         self._conn = None
         self._running = False
@@ -92,12 +93,33 @@ class TSQueryTracker:
     def switch_channel(self, channel_id: int):
         """
         Schaltet das Tracking auf einen neuen Kanal um.
-        Lädt sofort alle aktuell im neuen Kanal anwesenden Clients.
+        Speichert die Teilnehmer des alten Kanals und lädt die des neuen.
         """
         old = self._channel_id
+        # Teilnehmer des alten Kanals sichern
+        self._participants_by_channel[old] = self.get_participant_list()
         self._channel_id = channel_id
-        logger.info("Tracking gewechselt: Kanal %d → %d", old, channel_id)
+        with self._lock:
+            self._participants.clear()
+        logger.info("Tracking gewechselt: Kanal %d → %d – Teilnehmerliste zurückgesetzt.", old, channel_id)
         self._lade_aktuelle_teilnehmer()
+
+    def get_participants_by_channel(self) -> dict:
+        """Gibt alle Teilnehmer gruppiert nach Kanal-ID zurück (inkl. aktuellen Kanal)."""
+        result = dict(self._participants_by_channel)
+        result[self._channel_id] = self.get_participant_list()
+        return result
+
+    def get_channel_name(self, channel_id: int) -> str:
+        """Gibt den Kanalnamen für eine gegebene Kanal-ID zurück."""
+        try:
+            resp = self._conn.channellist()
+            for c in resp.parsed:
+                if int(c.get("cid", -1)) == channel_id:
+                    return c.get("channel_name", str(channel_id))
+        except Exception as e:
+            logger.warning("Kanalname für ID %d nicht ermittelbar: %s", channel_id, e)
+        return str(channel_id)
 
     # ── Interne Methoden ──────────────────────────────────────
 

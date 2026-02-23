@@ -18,7 +18,8 @@ Zwei Betriebsmodi:
 4. [Optionale Sprechertrennung](#4-optionale-sprechertrennung-diarization)
 5. [Web-Interface bedienen](#5-web-interface-bedienen)
 6. [Projektstruktur](#6-projektstruktur)
-7. [Troubleshooting](#7-troubleshooting)
+7. [Zugriff und Sicherheit](#7-zugriff-und-sicherheit)
+8. [Troubleshooting](#8-troubleshooting)
 
 ---
 
@@ -200,7 +201,7 @@ systemctl start  tsbot-api
 **Status prüfen:**
 
 ```bash
-systemctl status tsbot-api
+systemctl status tsbot-pulseaudio tsbot-api
 journalctl -u tsbot-api -f      # Live-Log
 ```
 
@@ -269,7 +270,9 @@ Claude versucht beim Protokollieren die Sprecher den Teilnehmern aus dem ServerQ
 # 3. Lizenzen akzeptieren (einmalig im Browser, mit dem HF-Account eingeloggt):
 #    https://huggingface.co/pyannote/speaker-diarization-3.1
 #    https://huggingface.co/pyannote/segmentation-3.0
-# 4. In config.env eintragen:
+# 4. whisperx installieren:
+/opt/tsbot/venv/bin/pip install whisperx
+# 5. In config.env eintragen:
 USE_DIARIZATION=true
 HF_TOKEN=hf_dein_token
 ```
@@ -303,7 +306,10 @@ Erreichbar unter `http://SERVER_IP:8080` (Login mit `API_USER` / `API_SECRET`).
    Beispiele: *„Schreibe Beschlüsse besonders hervor."* / *„Ignoriere Small Talk."*
 5. **▶ Aufnahme starten** → Bot verbindet sich mit TS3, tritt dem Kanal bei,
    Aufnahme und Teilnehmer-Tracking starten automatisch
-6. **■ Aufnahme stoppen** → Bot verlässt den Kanal, MP3 wird gespeichert,
+6. **Kanalwechsel** — über das Dropdown während der Aufnahme möglich. Der Bot wechselt
+   den Kanal, Teilnehmer-Tracking wird umgeschaltet. Jeder Kanal bekommt eine eigene
+   Teilnehmerliste im Protokoll.
+7. **■ Aufnahme stoppen** → Bot verlässt den Kanal, MP3 wird gespeichert,
    Transkription + Protokollerstellung laufen im Hintergrund
 
 Der Status-Badge zeigt den Fortschritt:
@@ -355,7 +361,7 @@ Liste aller abgeschlossenen Sitzungen mit Download-Links für:
 │   └── start_ts_client.sh      TS3-Client headless starten
 ├── systemd/
 │   ├── tsbot-api.service       systemd für FastAPI (Port 8080)
-│   └── tsbot-pulseaudio.service systemd für PulseAudio
+│   └── tsbot-pulseaudio.service systemd für PulseAudio + Xvfb + TS3-Client
 ├── config/
 │   ├── config.env              Secrets (in .gitignore, nie committen!)
 │   └── config.example.env      Template
@@ -365,6 +371,7 @@ Liste aller abgeschlossenen Sitzungen mit Download-Links für:
 │       ├── audio.mp3
 │       ├── meta.json
 │       ├── participants.json
+│       ├── participants_by_channel.json
 │       ├── *_transkript_*.txt
 │       └── Protokoll_*.docx
 ├── requirements.txt            Python-Abhängigkeiten (Linux)
@@ -381,26 +388,111 @@ Liste aller abgeschlossenen Sitzungen mit Download-Links für:
 
 ---
 
-## 7. Troubleshooting
+## 7. Zugriff und Sicherheit
+
+### Web-Interface
+
+Das Web-Interface (Port 8080) ist per **HTTP Basic Auth** geschützt
+(Benutzername + Passwort aus `config.env`).
+
+> **Hinweis:** HTTP Basic Auth überträgt Zugangsdaten Base64-kodiert, nicht verschlüsselt.
+> Für internen Betrieb (LAN, VPN) ist das akzeptabel.
+> Für öffentlichen Zugriff über das Internet: nginx mit HTTPS vorschalten (siehe unten).
+
+### SSH-Zugang
+
+Der Server-Zugang erfolgt ausschließlich per **SSH-Schlüssel** (kein Passwort-Login).
+
+```bash
+# SSH-Config (~/.ssh/config) auf dem lokalen Rechner:
+Host tsbot
+    HostName DEINE_SERVER_IP
+    User tsbot
+    IdentityFile ~/.ssh/tsbot_server
+
+# Verbinden:
+ssh tsbot
+```
+
+### Empfehlung: HTTPS + nginx (optional)
+
+Für den Betrieb über das öffentliche Internet empfiehlt sich ein Reverse Proxy:
+
+```bash
+apt install nginx certbot python3-certbot-nginx
+
+# /etc/nginx/sites-available/tsbot:
+server {
+    server_name tsbot.example.com;
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+    }
+}
+
+certbot --nginx -d tsbot.example.com
+```
+
+Damit läuft das Web-Interface unter `https://tsbot.example.com` mit gültigem SSL-Zertifikat,
+und Port 8080 muss **nicht** mehr in der Firewall freigegeben sein.
+
+### Empfehlung: WireGuard VPN (optional)
+
+Alternativ zu HTTPS kann das Web-Interface nur über ein VPN zugänglich gemacht werden.
+Dann ist Port 8080 nicht im Internet – nur Peers im VPN-Netz können zugreifen.
+
+```bash
+apt install wireguard
+# wg0-Interface einrichten, Peer (lokalen Rechner) hinzufügen
+# Web-Interface dann erreichbar unter http://10.x.x.x:8080
+# Port 8080 aus der öffentlichen Firewall entfernen
+```
+
+---
+
+## 8. Troubleshooting
+
+### Services starten nach Neustart nicht
+
+```bash
+# Status beider Services prüfen:
+systemctl status tsbot-pulseaudio tsbot-api
+
+# Falls tsbot-api "dependency failed" zeigt:
+# → tsbot-pulseaudio zuerst starten, dann api:
+systemctl start tsbot-pulseaudio
+systemctl start tsbot-api
+
+# Live-Log beobachten:
+journalctl -u tsbot-pulseaudio -u tsbot-api -f
+```
 
 ### PulseAudio-Sink fehlt nach Neustart
 
 ```bash
 systemctl restart tsbot-pulseaudio
-pactl list sinks short | grep tsbot_sink
+# Prüfen ob Sinks und Null-Mic angelegt sind:
+runuser -u tsbot -- env XDG_RUNTIME_DIR=/run/user/1000 pactl list sinks short
 ```
 
-### TS3-Client verbindet sich nicht
+### TS3-Client startet nicht / kein Audio
 
 ```bash
-# Prüfen ob Prozess läuft:
+# Prüfen ob Xvfb läuft (virtuelles Display):
+pgrep Xvfb || Xvfb :99 -screen 0 1024x768x24 &
+
+# Prüfen ob TS3-Client läuft:
 pgrep -a ts3client
 
-# Manuell starten:
-sudo -u tsbot bash /opt/tsbot/scripts/start_ts_client.sh
+# ALSA → PulseAudio Routing prüfen:
+cat /home/tsbot/.asoundrc   # muss pcm.!default { type asym ... } enthalten
+
+# TS3-Client manuell starten (als root, da runuser root-Rechte braucht):
+runuser -u tsbot -- env XDG_RUNTIME_DIR=/run/user/1000 DISPLAY=:99 \
+    /home/tsbot/TeamSpeak3/ts3client_runscript.sh
 
 # Log ansehen:
-journalctl -u tsbot-api --since "5 min ago"
+tail -f /home/tsbot/ts3client.log
+journalctl -u tsbot-pulseaudio --since "5 min ago"
 ```
 
 ### ServerQuery-Verbindung schlägt fehl

@@ -159,15 +159,43 @@ class SessionManager:
         # Audio stoppen
         audio_path = self._audio.stop()
 
-        # Teilnehmer speichern
+        # Teilnehmer pro Kanal speichern
         participants = []
+        participants_by_channel = {}
         if self._tracker:
-            participants = self._tracker.get_participant_list()
+            # Kanal-ID → Name Mapping aus Channel-Events aufbauen
+            channel_names = {}
+            for evt in self._channel_events:
+                channel_names[evt["from_channel"]] = evt.get("from_channel_name", str(evt["from_channel"]))
+                channel_names[evt["to_channel"]]   = evt.get("to_channel_name",   str(evt["to_channel"]))
+            # Aktuellen Kanal ebenfalls eintragen
+            cid = self._current_channel_id
+            if cid not in channel_names:
+                channel_names[cid] = str(cid)
+
+            raw = self._tracker.get_participants_by_channel()
+            for ch_id, parts in raw.items():
+                ch_name = channel_names.get(ch_id, str(ch_id))
+                participants_by_channel[ch_name] = parts
+                participants.extend(parts)
+            # Deduplizieren (gleiche Person in mehreren Kanälen)
+            seen = set()
+            unique = []
+            for p in participants:
+                key = p.get("frs") or p.get("name", "")
+                if key not in seen:
+                    seen.add(key)
+                    unique.append(p)
+            participants = unique
             self._tracker.stop()
+
         (self.session_dir / "participants.json").write_text(
             json.dumps(participants, ensure_ascii=False, indent=2), encoding="utf-8"
         )
-        logger.info("%d Teilnehmer gespeichert.", len(participants))
+        (self.session_dir / "participants_by_channel.json").write_text(
+            json.dumps(participants_by_channel, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        logger.info("%d Teilnehmer in %d Kanälen gespeichert.", len(participants), len(participants_by_channel))
 
         # TS3 Client trennen
         if self._ts_client:
@@ -261,12 +289,28 @@ class SessionManager:
         if old_id == new_channel_id:
             return  # Kein echter Wechsel
 
+        # Kanalnamen auflösen
+        old_name = str(old_id)
+        new_name = str(new_channel_id)
+        if self._tracker:
+            try:
+                old_name = await self._loop.run_in_executor(
+                    None, self._tracker.get_channel_name, old_id
+                )
+                new_name = await self._loop.run_in_executor(
+                    None, self._tracker.get_channel_name, new_channel_id
+                )
+            except Exception as e:
+                logger.warning("Kanalnamen konnten nicht aufgelöst werden: %s", e)
+
         self._current_channel_id = new_channel_id
         event = {
-            "type":         "channel_change",
-            "from_channel": old_id,
-            "to_channel":   new_channel_id,
-            "timestamp":    datetime.now().isoformat(),
+            "type":             "channel_change",
+            "from_channel":     old_id,
+            "from_channel_name": old_name,
+            "to_channel":       new_channel_id,
+            "to_channel_name":  new_name,
+            "timestamp":        datetime.now().isoformat(),
         }
         self._channel_events.append(event)
 
@@ -318,6 +362,12 @@ class SessionManager:
             agenda_file    = meta.get("agenda_file")
             channel_events = meta.get("channel_events", [])
 
+            # participants_by_channel aus Datei laden (wurde von stop_session gespeichert)
+            pbc_path = self.session_dir / "participants_by_channel.json"
+            participants_by_channel = {}
+            if pbc_path.exists():
+                participants_by_channel = json.loads(pbc_path.read_text(encoding="utf-8"))
+
             await loop.run_in_executor(
                 self._executor,
                 self._erstelle_protokoll_sync,
@@ -327,6 +377,7 @@ class SessionManager:
                 participants,
                 meta.get("extra_instruktionen", ""),
                 channel_events,
+                participants_by_channel,
             )
 
             self.state = State.DONE
@@ -349,19 +400,21 @@ class SessionManager:
     def _erstelle_protokoll_sync(self, transcript_path: Path, thema: str,
                                   agenda_file: str | None, participants: list,
                                   extra_instruktionen: str = "",
-                                  channel_events: list = None):
+                                  channel_events: list = None,
+                                  participants_by_channel: dict = None):
         """Synchroner Protokoll-Generator (läuft im ThreadPoolExecutor)."""
         import sys
         sys.path.insert(0, str(Path(__file__).parent.parent / "core"))
         from protokoll_erstellen import erstelle_protokoll
 
         erstelle_protokoll(
-            transkript_pfad     = str(transcript_path),
-            thema               = thema,
-            agenda_pfad         = agenda_file,
-            teilnehmer_liste    = participants,
-            extra_instruktionen = extra_instruktionen or None,
-            kanal_wechsel       = channel_events or [],
+            transkript_pfad         = str(transcript_path),
+            thema                   = thema,
+            agenda_pfad             = agenda_file,
+            teilnehmer_liste        = participants,
+            extra_instruktionen     = extra_instruktionen or None,
+            kanal_wechsel           = channel_events or [],
+            teilnehmer_pro_kanal    = participants_by_channel or {},
         )
 
     def _reset(self):

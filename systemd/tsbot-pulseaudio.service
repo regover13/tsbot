@@ -8,10 +8,14 @@ Type=oneshot
 RemainAfterExit=yes
 User=tsbot
 Group=tsbot
+Environment=XDG_RUNTIME_DIR=/run/user/1000
 # Umgebungsvariablen aus config.env laden
 EnvironmentFile=/opt/tsbot/config/config.env
+ExecStartPre=+/bin/bash -c 'mkdir -p /run/user/1000 && chown tsbot:tsbot /run/user/1000 && chmod 700 /run/user/1000'
+ExecStartPre=/bin/bash -c 'pgrep Xvfb || (Xvfb :99 -screen 0 1024x768x24 &>/dev/null & sleep 2)'
 ExecStart=/opt/tsbot/scripts/start_pulseaudio.sh
-ExecStop=pulseaudio --kill
+ExecStartPost=/bin/bash -c 'sleep 3; XDG_RUNTIME_DIR=/run/user/1000 DISPLAY=:99 PULSE_SINK=tsbot_sink nohup /home/tsbot/TeamSpeak3/ts3client_runscript.sh >> /home/tsbot/ts3client.log 2>&1 &'
+ExecStop=/bin/bash -c 'pulseaudio --kill 2>/dev/null; rm -f /run/user/1000/pulse/native 2>/dev/null; pkill -f ts3client_linux_amd64 2>/dev/null; exit 0'
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=tsbot-pulseaudio

@@ -7,6 +7,7 @@ Requires=tsbot-pulseaudio.service
 Type=simple
 User=tsbot
 Group=tsbot
+Environment=XDG_RUNTIME_DIR=/run/user/1000
 WorkingDirectory=/opt/tsbot
 # Umgebungsvariablen aus config.env laden
 EnvironmentFile=/opt/tsbot/config/config.env

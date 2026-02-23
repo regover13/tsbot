@@ -196,11 +196,23 @@ def ki_zuordnung(volltext: str, segmente: list, agenda: list, api_key: str, mode
     # ── Sprecher-Mapping-Block (nur wenn Diarization-Tags vorhanden) ──
     sprecher_block = ""
     sprecher_ids = _erkenne_sprecher(segmente) if segmente else []
-    if sprecher_ids and teilnehmer_liste:
-        teilnehmer_text = "\n".join(
-            f"  - {t['name']}" + (f" ({t['frs']})" if t.get("frs") else "")
-            for t in teilnehmer_liste
-        )
+    if sprecher_ids and (teilnehmer_pro_kanal or teilnehmer_liste):
+        if teilnehmer_pro_kanal:
+            alle = [p for parts in teilnehmer_pro_kanal.values() for p in parts]
+            seen_keys = set(); unique = []
+            for p in alle:
+                k = p.get("frs") or p.get("name", "")
+                if k not in seen_keys:
+                    seen_keys.add(k); unique.append(p)
+            teilnehmer_text = "\n".join(
+                f"  - {t['name']}" + (f" ({t['frs']})" if t.get("frs") else "")
+                for t in unique
+            )
+        else:
+            teilnehmer_text = "\n".join(
+                f"  - {t['name']}" + (f" ({t['frs']})" if t.get("frs") else "")
+                for t in teilnehmer_liste
+            )
         sprecher_block = f"""
 SPRECHERIDENTIFIKATION:
 Das Transkript enthält automatisch erkannte, anonyme Sprecher ({', '.join(sprecher_ids)}).
@@ -286,7 +298,8 @@ def erstelle_protokoll(transkript_pfad: str, thema: str,
                        agenda_pfad: str = None,
                        teilnehmer_liste: list = None,
                        extra_instruktionen: str = None,
-                       kanal_wechsel: list = None):
+                       kanal_wechsel: list = None,
+                       teilnehmer_pro_kanal: dict = None):
     """
     Erstellt ein Word-Protokoll aus einem Transkript.
 
@@ -373,10 +386,10 @@ def erstelle_protokoll(transkript_pfad: str, thema: str,
         note.add_run("Hinweis – Kanalwechsel während der Sitzung:").bold = True
         for evt in kanal_wechsel:
             ts   = evt.get("timestamp", "")[:19].replace("T", " ")
-            von  = evt.get("from_channel", "?")
-            nach = evt.get("to_channel", "?")
+            von  = evt.get("from_channel_name") or f"Kanal {evt.get('from_channel', '?')}"
+            nach = evt.get("to_channel_name")   or f"Kanal {evt.get('to_channel', '?')}"
             item = doc.add_paragraph(style="List Bullet")
-            item.add_run(f"{ts}: Kanal {von} → Kanal {nach}")
+            item.add_run(f"{ts}: {von} → {nach}")
             item.add_run(" – Teilnehmer-Tracking wurde umgeschaltet.").italic = True
         doc.add_paragraph()
 
@@ -398,22 +411,34 @@ def erstelle_protokoll(transkript_pfad: str, thema: str,
 
     # ── Teilnehmer ─────────────────────────────────────────────
     doc.add_heading('Teilnehmer', level=1)
-    if teilnehmer_liste:
-        tbl = doc.add_table(rows=1, cols=2)
+
+    def _teilnehmer_tabelle(dok, liste):
+        tbl = dok.add_table(rows=1, cols=2)
         tbl.style = 'Table Grid'
         hdr = tbl.rows[0].cells
         hdr[0].text = "Name"
         hdr[1].text = "FRS-Nummer"
         for r in hdr:
             r.paragraphs[0].runs[0].bold = True
-        for t in teilnehmer_liste:
+        for t in liste:
             row = tbl.add_row().cells
-            row[0].text = t["name"]
-            row[1].text = t["frs"]
+            row[0].text = t.get("name", "")
+            row[1].text = t.get("frs", "")
+
+    if teilnehmer_pro_kanal:
+        for kanal_name, liste in teilnehmer_pro_kanal.items():
+            if not liste:
+                continue
+            doc.add_heading(kanal_name, level=2)
+            _teilnehmer_tabelle(doc, liste)
+            doc.add_paragraph()
+    elif teilnehmer_liste:
+        _teilnehmer_tabelle(doc, teilnehmer_liste)
+        doc.add_paragraph()
     else:
         for _ in range(4):
             doc.add_paragraph().add_run("_" * 50)
-    doc.add_paragraph()
+        doc.add_paragraph()
 
     # ── Agenda ─────────────────────────────────────────────────
     if agenda:
