@@ -19,7 +19,8 @@ Zwei Betriebsmodi:
 5. [Web-Interface bedienen](#5-web-interface-bedienen)
 6. [Projektstruktur](#6-projektstruktur)
 7. [Zugriff und Sicherheit](#7-zugriff-und-sicherheit)
-8. [Troubleshooting](#8-troubleshooting)
+8. [Backup nach OneDrive](#8-backup-nach-onedrive)
+9. [Troubleshooting](#9-troubleshooting)
 
 ---
 
@@ -414,31 +415,53 @@ Host tsbot
 ssh tsbot
 ```
 
-### Empfehlung: HTTPS + nginx (optional)
+### HTTPS + nginx einrichten (empfohlen)
 
-Für den Betrieb über das öffentliche Internet empfiehlt sich ein Reverse Proxy:
+Voraussetzung: Ein DNS-A-Record zeigt auf die Server-IP.
 
 ```bash
-apt install nginx certbot python3-certbot-nginx
-
-# /etc/nginx/sites-available/tsbot:
-server {
-    server_name tsbot.example.com;
-    location / {
-        proxy_pass http://127.0.0.1:8080;
-    }
-}
-
-certbot --nginx -d tsbot.example.com
+# Beispiel: tsbot.devprops.de → 167.86.127.129
+# DNS-Eintrag beim Provider anlegen:
+#   Typ: A  |  Name: tsbot  |  Wert: SERVER_IP
 ```
 
-Damit läuft das Web-Interface unter `https://tsbot.example.com` mit gültigem SSL-Zertifikat,
-und Port 8080 muss **nicht** mehr in der Firewall freigegeben sein.
+```bash
+# 1. nginx und certbot installieren
+apt install nginx certbot python3-certbot-nginx
 
-### Empfehlung: WireGuard VPN (optional)
+# 2. nginx-Konfiguration anlegen
+cat > /etc/nginx/sites-available/tsbot << 'EOF'
+server {
+    listen 80;
+    server_name tsbot.devprops.de;
 
-Alternativ zu HTTPS kann das Web-Interface nur über ein VPN zugänglich gemacht werden.
-Dann ist Port 8080 nicht im Internet – nur Peers im VPN-Netz können zugreifen.
+    location / {
+        proxy_pass         http://127.0.0.1:8080;
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Real-IP $remote_addr;
+        proxy_http_version 1.1;
+        # Für lange Transkriptions-Requests (SSE / Polling)
+        proxy_read_timeout 300s;
+    }
+}
+EOF
+
+ln -s /etc/nginx/sites-available/tsbot /etc/nginx/sites-enabled/
+nginx -t && systemctl reload nginx
+
+# 3. SSL-Zertifikat via Let's Encrypt (kostenlos, automatische Erneuerung)
+certbot --nginx -d tsbot.devprops.de
+
+# 4. Port 8080 aus der Firewall entfernen (optional, erhöht Sicherheit)
+ufw delete allow 8080/tcp
+```
+
+Danach ist das Web-Interface erreichbar unter `https://tsbot.devprops.de` –
+mit gültigem SSL-Zertifikat, das sich automatisch erneuert.
+
+### WireGuard VPN (alternative zu HTTPS)
+
+Wenn das Web-Interface gar nicht öffentlich erreichbar sein soll:
 
 ```bash
 apt install wireguard
@@ -449,7 +472,64 @@ apt install wireguard
 
 ---
 
-## 8. Troubleshooting
+## 8. Backup nach OneDrive
+
+Sitzungsdaten (Audio, Transkripte, Protokolle) werden täglich automatisch nach OneDrive gesichert.
+Verwendet wird **rclone** mit `sync` – OneDrive spiegelt immer den aktuellen Server-Stand.
+Gelöschte Sessions verschwinden beim nächsten Backup auch aus OneDrive (kein Versions-Wildwuchs).
+
+**Gesicherter Inhalt:**
+```
+OneDrive/TSBot-Backup/
+├── agenda.txt
+└── sessions/
+    └── YYYYMMDD_HHMMSS/
+        ├── audio.mp3
+        ├── Protokoll_*.docx
+        ├── *_transkript_*.txt
+        └── meta.json
+```
+
+### Einmalige Einrichtung
+
+```bash
+# 1. rclone installieren
+curl https://rclone.org/install.sh | sudo bash
+
+# 2. OneDrive-Verbindung einrichten (headless via SSH-Tunnel)
+# Auf dem lokalen Rechner: SSH-Tunnel öffnen
+ssh -L 53682:localhost:53682 tsbot
+
+# Auf dem Server: rclone config starten
+rclone config
+# → New remote → Name: onedrive → Type: onedrive
+# → client_id/secret: leer lassen
+# → Use auto config: y  (Browser öffnet sich über den Tunnel)
+# → Drive: "OneDrive (personal)" wählen → bestätigen
+```
+
+### Cronjob
+
+Läuft täglich um 02:00 Uhr als Systemcron:
+
+```
+# /etc/cron.d/tsbot-backup
+0 2 * * * tsbot /opt/tsbot/scripts/backup_onedrive.sh >> /opt/tsbot/logs/backup.log 2>&1
+```
+
+### Manuell ausführen
+
+```bash
+/opt/tsbot/scripts/backup_onedrive.sh
+
+# Ergebnis prüfen:
+rclone lsd onedrive:/TSBot-Backup/
+cat /opt/tsbot/logs/backup.log | tail -20
+```
+
+---
+
+## 9. Troubleshooting
 
 ### Services starten nach Neustart nicht
 
