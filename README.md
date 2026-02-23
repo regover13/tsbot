@@ -294,7 +294,7 @@ Plain Whisper läuft dann ohne HF-Token.
 
 ## 5. Web-Interface bedienen
 
-Erreichbar unter `http://SERVER_IP:8080` (Login mit `API_USER` / `API_SECRET`).
+Erreichbar unter `https://tsbot.devprops.de` (Login mit `API_USER` / `API_SECRET`).
 
 ### Tab „Aufnahme"
 
@@ -415,49 +415,34 @@ Host tsbot
 ssh tsbot
 ```
 
-### HTTPS + nginx einrichten (empfohlen)
+### HTTPS + nginx
 
-Voraussetzung: Ein DNS-A-Record zeigt auf die Server-IP.
+Das Web-Interface läuft unter **https://tsbot.devprops.de** mit einem
+Let's Encrypt-Zertifikat (automatische Erneuerung via certbot).
 
-```bash
-# Beispiel: tsbot.devprops.de → 167.86.127.129
-# DNS-Eintrag beim Provider anlegen:
-#   Typ: A  |  Name: tsbot  |  Wert: SERVER_IP
-```
+Für eine Neuinstallation:
 
 ```bash
-# 1. nginx und certbot installieren
-apt install nginx certbot python3-certbot-nginx
+# 1. Pakete installieren
+apt install nginx certbot
 
-# 2. nginx-Konfiguration anlegen
-cat > /etc/nginx/sites-available/tsbot << 'EOF'
-server {
-    listen 80;
-    server_name tsbot.devprops.de;
-
-    location / {
-        proxy_pass         http://127.0.0.1:8080;
-        proxy_set_header   Host $host;
-        proxy_set_header   X-Real-IP $remote_addr;
-        proxy_http_version 1.1;
-        # Für lange Transkriptions-Requests (SSE / Polling)
-        proxy_read_timeout 300s;
-    }
-}
-EOF
-
+# 2. nginx-Konfiguration (liegt im Repo unter nginx/tsbot.conf)
+cp /opt/tsbot/nginx/tsbot.conf /etc/nginx/sites-available/tsbot
 ln -s /etc/nginx/sites-available/tsbot /etc/nginx/sites-enabled/
+mkdir -p /var/www/html
 nginx -t && systemctl reload nginx
 
-# 3. SSL-Zertifikat via Let's Encrypt (kostenlos, automatische Erneuerung)
-certbot --nginx -d tsbot.devprops.de
+# 3. DNS-A-Record setzen: tsbot.devprops.de → SERVER_IP
 
-# 4. Port 8080 aus der Firewall entfernen (optional, erhöht Sicherheit)
-ufw delete allow 8080/tcp
+# 4. Zertifikat ausstellen (webroot-Methode, funktioniert auch headless)
+certbot certonly --webroot -w /var/www/html -d tsbot.devprops.de \
+    --non-interactive --agree-tos -m admin@devprops.de
+
+# 5. nginx mit SSL neu laden
+systemctl reload nginx
 ```
 
-Danach ist das Web-Interface erreichbar unter `https://tsbot.devprops.de` –
-mit gültigem SSL-Zertifikat, das sich automatisch erneuert.
+Das Zertifikat wird automatisch erneuert (certbot-Timer läuft als systemd-Service).
 
 ### WireGuard VPN (alternative zu HTTPS)
 
