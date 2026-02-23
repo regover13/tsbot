@@ -62,9 +62,8 @@ class TSQueryTracker:
         # Sofort aktuelle Teilnehmer laden (alle auf dem Server)
         self._lade_aktuelle_teilnehmer()
 
-        # Event-Benachrichtigungen aktivieren (doppelt für maximale Abdeckung)
+        # Event-Benachrichtigungen aktivieren (server-Events: cliententer/clientleft)
         self._conn.servernotifyregister(event="server")
-        self._conn.servernotifyregister(event="channel", id=0)
         self._running = True
 
         # Hintergrund-Thread für eingehende Events
