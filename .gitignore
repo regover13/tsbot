@@ -2,6 +2,9 @@
 config.txt
 config/config.env
 
+# Claude Code interne Einstellungen
+.claude/
+
 # Aufnahmen und generierte Dateien
 *.mp3
 *.wav
