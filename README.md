@@ -169,20 +169,24 @@ chmod +x TeamSpeak3-Client-linux_amd64-3.6.2.run
 
 **Einmalige Lizenz-Akzeptanz (muss einmalig mit GUI gemacht werden):**
 
-```bash
-# Terminal 1 – Xvfb + TS3 starten
-export DISPLAY=:99
-Xvfb :99 -screen 0 1024x768x24 &
-sleep 1
-x11vnc -display :99 -forever -nopw -localhost &
-~/TeamSpeak3/ts3client_linux_amd64 &
+> **Hinweis:** Nach der Service-Installation läuft Xvfb `:99` bereits automatisch –
+> nicht nochmal starten. Nur x11vnc muss für den VNC-Zugriff gestartet werden.
 
-# Terminal 2 – VNC-Tunnel auf deinem lokalen Rechner (nicht Server)
+```bash
+# Schritt 1 – x11vnc als tsbot-User starten (Xvfb läuft bereits via systemd)
+runuser -u tsbot -- env DISPLAY=:99 x11vnc -display :99 -forever -nopw -localhost -bg
+
+# Schritt 2 – SSH-Tunnel auf dem lokalen Rechner öffnen (neues Terminal)
 ssh -L 5900:localhost:5900 tsbot@DEINE_SERVER_IP
 ```
 
 Dann mit einem VNC-Viewer auf `localhost:5900` verbinden (z.B. [RealVNC Viewer](https://www.realvnc.com/de/connect/download/viewer/), kostenlos).
 Im TS3-Fenster den Lizenzdialog bestätigen → fertig. Danach läuft der Client headless.
+
+Nach der Lizenz-Akzeptanz x11vnc wieder beenden:
+```bash
+pkill x11vnc
+```
 
 ### Schritt 8 – systemd Services installieren
 
