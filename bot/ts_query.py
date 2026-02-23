@@ -125,6 +125,8 @@ class TSQueryTracker:
 
     def _lade_aktuelle_teilnehmer(self):
         """Lädt alle aktuell auf dem Server verbundenen Clients (kanalunabhängig)."""
+        if not self._running:
+            return
         try:
             resp = self._conn.clientlist()
             for c in resp.parsed:

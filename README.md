@@ -282,6 +282,10 @@ USE_DIARIZATION=true
 HF_TOKEN=hf_dein_token
 ```
 
+> **Versionshinweis:** Getestet und kompatibel mit **whisperx ≥ 3.8.1** und **pyannote.audio ≥ 4.0.4**.
+> Ab pyannote.audio 4.x heißt der Token-Parameter `token` (statt früher `use_auth_token`) –
+> der Code verwendet bereits die neue API.
+
 **Mehraufwand:**
 - +~30–50 % Rechenzeit gegenüber plain Whisper
 - Beim ersten Start werden die pyannote-Modelle (~1 GB) heruntergeladen und gecacht
@@ -600,6 +604,17 @@ journalctl -u tsbot-api -n 50 --no-pager
 
 HF_TOKEN in `config.env` fehlt oder ist ungültig. Lizenzen auf HuggingFace akzeptiert?
 Prüfen: https://huggingface.co/pyannote/speaker-diarization-3.1
+
+### Diarization-Fehler: „unexpected keyword argument 'use_auth_token'"
+
+Tritt auf mit älteren Codeständen und **pyannote.audio ≥ 4.0.4**, weil der Parameter
+von `use_auth_token` zu `token` umbenannt wurde. Im aktuellen Stand des Repos ist das
+bereits korrigiert. Lösung: Repository auf den neuesten Stand bringen und neu deployen:
+
+```bash
+cd /opt/tsbot && git pull
+systemctl restart tsbot-api
+```
 
 ### Diarization: „keine Sprecher zugewiesen" im Transkript
 

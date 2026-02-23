@@ -92,7 +92,7 @@ def _whisperx_segmente(audio_pfad: str, model_name: str, device: str, hf_token: 
         import torch
         from whisperx.diarize import DiarizationPipeline
         diarize_model = DiarizationPipeline(
-            use_auth_token=hf_token, device=device
+            token=hf_token, device=device
         )
         # Audio als vorgeladenes Tensor übergeben – umgeht torchcodec-Fehler
         waveform = {"waveform": torch.from_numpy(audio).unsqueeze(0), "sample_rate": 16000}
