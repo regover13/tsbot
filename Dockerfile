@@ -13,12 +13,10 @@ WORKDIR /opt/tsbot
 
 # Python-Abhängigkeiten (Layer-Cache-freundlich)
 COPY --chown=tsbot:tsbot requirements.txt .
-RUN pip install --no-cache-dir --user \
-    torch --extra-index-url https://download.pytorch.org/whl/cpu && \
-    pip install --no-cache-dir --user -r requirements.txt
+RUN pip install --no-cache-dir --user -r requirements.txt
 
 # Whisper-Modell vorab herunterladen (wird im Image gecacht → kein Download beim ersten Start)
-RUN python -c "import whisper; whisper.load_model('small')"
+RUN python -c "from faster_whisper import WhisperModel; WhisperModel('small', device='cpu', compute_type='int8')"
 
 # App-Code
 COPY --chown=tsbot:tsbot . .

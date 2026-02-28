@@ -1,15 +1,9 @@
 # =============================================================================
 # TSBot Python-Abhängigkeiten (Linux-Server)
-#
-# Installation:
-#   pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
-#
-# Hinweis: torch (CPU-only) = ~2,5 GB Download, nur einmalig nötig.
 # =============================================================================
 
-# Whisper + PyTorch (CPU-only für VPS ohne GPU)
-openai-whisper
-torch --extra-index-url https://download.pytorch.org/whl/cpu
+# Whisper (faster-whisper = CTranslate2-Backend, 3–5× schneller als openai-whisper)
+faster-whisper
 
 # Protokoll-Generator
 anthropic

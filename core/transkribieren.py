@@ -18,22 +18,24 @@ def _fmt(sek: float) -> str:
 
 def _whisper_segmente(audio_pfad: str, model_name: str, device: str) -> tuple:
     """
-    Transkription mit openai-whisper.
+    Transkription mit faster-whisper (CTranslate2).
     Gibt (segmente, volltext) zurück.
     Segmente: [{"start", "end", "text"}, ...]
     """
-    import whisper
+    from faster_whisper import WhisperModel
+    compute_type = "float16" if device == "cuda" else "int8"
     print(f"Lade Whisper-Modell ({model_name})...")
-    model = whisper.load_model(model_name, device=device)
+    model = WhisperModel(model_name, device=device, compute_type=compute_type)
 
     print("Transkribiere...")
-    result = model.transcribe(audio_pfad, language="de", verbose=False, word_timestamps=True)
+    segments_gen, _ = model.transcribe(audio_pfad, language="de", word_timestamps=True)
 
     segs = [
-        {"start": s["start"], "end": s["end"], "text": s["text"].strip()}
-        for s in result["segments"]
+        {"start": s.start, "end": s.end, "text": s.text.strip()}
+        for s in segments_gen
     ]
-    return segs, result["text"].strip()
+    volltext = " ".join(s["text"] for s in segs)
+    return segs, volltext
 
 
 # ── Haupt-Funktion ─────────────────────────────────────────────
@@ -51,12 +53,16 @@ def transkribiere(audio_pfad: str, ausgabe_ordner: str = None, model_name: str =
     zeitstempel   = datetime.now().strftime("%Y%m%d_%H%M")
     ausgabe_datei = os.path.join(ausgabe_ordner, f"{basis_name}_transkript_{zeitstempel}.txt")
 
-    import torch
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    if device == "cuda":
-        print(f"GPU erkannt: {torch.cuda.get_device_name(0)} – nutze CUDA")
-    else:
-        print("Kein CUDA gefunden – nutze CPU (langsamer)")
+    device = os.environ.get("WHISPER_DEVICE", "cpu")
+    try:
+        import ctranslate2
+        if ctranslate2.get_cuda_device_count() > 0:
+            device = "cuda"
+            print("GPU erkannt – nutze CUDA")
+        else:
+            print("Kein CUDA gefunden – nutze CPU")
+    except Exception:
+        print(f"Nutze Device: {device}")
 
     if model_name is None:
         model_name = os.environ.get("WHISPER_MODEL", "large")
