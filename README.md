@@ -14,12 +14,13 @@ Zwei Betriebsmodi:
 
 1. [Windows-Setup (lokal)](#1-windows-setup-lokal)
 2. [Linux-Server-Setup (Bot)](#2-linux-server-setup-bot)
-3. [Konfiguration](#3-konfiguration)
-4. [Web-Interface bedienen](#4-web-interface-bedienen)
-5. [Projektstruktur](#5-projektstruktur)
-6. [Zugriff und Sicherheit](#6-zugriff-und-sicherheit)
-7. [Backup nach OneDrive](#7-backup-nach-onedrive)
-8. [Troubleshooting](#8-troubleshooting)
+3. [Docker-Deployment & CI/CD](#3-docker-deployment--cicd)
+4. [Konfiguration](#4-konfiguration)
+5. [Web-Interface bedienen](#5-web-interface-bedienen)
+6. [Projektstruktur](#6-projektstruktur)
+7. [Zugriff und Sicherheit](#7-zugriff-und-sicherheit)
+8. [Backup nach OneDrive](#8-backup-nach-onedrive)
+9. [Troubleshooting](#9-troubleshooting)
 
 ---
 
@@ -230,7 +231,72 @@ ufw allow 8080/tcp
 
 ---
 
-## 3. Konfiguration
+## 3. Docker-Deployment & CI/CD
+
+Der Server-Betrieb läuft via **Docker + GitHub Actions**.
+Bei jedem Push auf `master` wird automatisch ein neues Image gebaut und deployed – kein manuelles `git pull` mehr.
+
+### Architektur
+
+```
+git push master
+  → GitHub Actions: Docker build + push → ghcr.io/regover13/tsbot:latest
+  → Portainer Webhook: Pull neues Image + Container neu starten
+```
+
+**Was wird dockerisiert:** Nur die Python-App (FastAPI + Whisper + Claude).
+**Nicht im Container:** PulseAudio, Xvfb und der TS3 Linux Client – diese laufen stabil als
+systemd-Service (`tsbot-pulseaudio`) auf dem Host. Der Container bekommt Zugriff über:
+- `network_mode: host` → localhost:25639 (ClientQuery) und localhost:10011 (ServerQuery) direkt erreichbar
+- Volume-Mount für PulseAudio-Socket (`/run/user/1000/pulse`)
+- Volume-Mount für TS3 ClientQuery-API-Key (`~/.ts3client`)
+
+### Einmaliger Server-Setup
+
+```bash
+# 1. tsbot-api systemd-Service stoppen (Docker übernimmt)
+systemctl stop tsbot-api
+systemctl disable tsbot-api
+
+# 2. GHCR-Image öffentlich setzen:
+#    GitHub → Packages → tsbot → Package settings → Make public
+#    Alternativ: Portainer Registry mit GitHub PAT konfigurieren
+
+# 3. Portainer Stack erstellen:
+#    Stacks → Add Stack → Repository → https://github.com/regover13/tsbot
+#    Compose-Datei: docker-compose.yml
+#    Auto-update: "GitOps updates" aktivieren → Webhook-URL kopieren
+
+# 4. Webhook-URL als GitHub Secret speichern:
+#    Repository → Settings → Secrets → Actions → New secret
+#    Name: PORTAINER_WEBHOOK_URL
+#    Value: (URL aus Portainer)
+```
+
+Nach dem Setup wird bei jedem Push auf `master` automatisch:
+1. Das Docker-Image gebaut und auf GHCR gepusht
+2. Portainer benachrichtigt → Container wird mit dem neuen Image neu gestartet
+
+### Lokaler Docker-Test
+
+```bash
+# Image bauen:
+docker build -t tsbot:local .
+
+# Container starten (ohne PulseAudio-Socket, nur zum API-Test):
+docker run --rm -p 8080:8080 \
+    --env-file config/config.env \
+    -v $(pwd)/data:/opt/tsbot/data \
+    tsbot:local
+
+# Auf dem Server (mit allen Mounts):
+docker compose up -d
+docker compose logs -f
+```
+
+---
+
+## 4. Konfiguration
 
 Alle Einstellungen in `/opt/tsbot/config/config.env` (Linux) bzw. `config.txt` (Windows).
 
@@ -259,7 +325,7 @@ Alle Einstellungen in `/opt/tsbot/config/config.env` (Linux) bzw. `config.txt` (
 
 ---
 
-## 4. Web-Interface bedienen
+## 5. Web-Interface bedienen
 
 Erreichbar unter `https://tsbot.devprops.de` (Login mit `API_USER` / `API_SECRET`).
 
@@ -312,7 +378,7 @@ Liste aller abgeschlossenen Sitzungen mit Download-Links für:
 
 ---
 
-## 5. Projektstruktur
+## 6. Projektstruktur
 
 ```
 /opt/tsbot/  (Linux-Server) bzw. tsbot/ (Windows-Repo)
@@ -352,6 +418,11 @@ Liste aller abgeschlossenen Sitzungen mit Download-Links für:
 │       ├── participants_by_channel.json
 │       ├── *_transkript_*.txt
 │       └── Protokoll_*.docx
+├── Dockerfile                  Docker-Image Definition
+├── docker-compose.yml          Portainer Stack (Server-Deployment)
+├── .dockerignore               Build-Context Filter
+├── .github/
+│   └── workflows/deploy.yml    CI/CD Pipeline (Build + Deploy)
 ├── requirements.txt            Python-Abhängigkeiten (Linux)
 │
 │   ── Windows-Dateien (nur lokal) ──────────────────────────
@@ -366,7 +437,7 @@ Liste aller abgeschlossenen Sitzungen mit Download-Links für:
 
 ---
 
-## 6. Zugriff und Sicherheit
+## 7. Zugriff und Sicherheit
 
 ### Web-Interface
 
@@ -434,7 +505,7 @@ apt install wireguard
 
 ---
 
-## 7. Backup nach OneDrive
+## 8. Backup nach OneDrive
 
 Sitzungsdaten (Audio, Transkripte, Protokolle) werden täglich automatisch nach OneDrive gesichert.
 Verwendet wird **rclone** mit `sync` – OneDrive spiegelt immer den aktuellen Server-Stand.
@@ -469,7 +540,7 @@ journalctl -u onedrive-backup -f
 
 ---
 
-## 8. Troubleshooting
+## 9. Troubleshooting
 
 ### Services starten nach Neustart nicht
 
@@ -545,6 +616,42 @@ WHISPER_MODEL=small
 ```bash
 journalctl -u tsbot-api -n 50 --no-pager
 # Häufig: config.env fehlt oder Python-Pakete nicht installiert
+```
+
+### Docker: Container startet nicht
+
+```bash
+# Container-Logs prüfen:
+docker compose logs tsbot-api
+
+# Image manuell pullen (falls Portainer-Webhook fehlschlug):
+docker compose pull && docker compose up -d
+
+# PulseAudio-Socket erreichbar?
+ls -la /run/user/1000/pulse/native
+# Fehlt er → tsbot-pulseaudio Service neu starten:
+systemctl restart tsbot-pulseaudio
+```
+
+### GitHub Actions: Build schlägt fehl
+
+```bash
+# Im GitHub Actions Tab (Repository → Actions) den fehlgeschlagenen Job öffnen.
+# Häufige Ursachen:
+# - PORTAINER_WEBHOOK_URL Secret fehlt oder ist abgelaufen
+# - Docker Buildx Cache kaputt → Cache löschen: Actions → Caches → Delete
+# - requirements.txt enthält fehlerhafte Paketnamen
+```
+
+### Docker: Portainer zieht kein neues Image
+
+```bash
+# Webhook manuell testen (URL aus Portainer kopieren):
+curl -X POST "https://portainer.example.com/api/webhooks/..."
+
+# Im Portainer Stack: "Pull and redeploy" manuell auslösen
+# Dann prüfen ob das Image-Tag "latest" wirklich aktuell ist:
+docker inspect ghcr.io/regover13/tsbot:latest | grep Created
 ```
 
 ---

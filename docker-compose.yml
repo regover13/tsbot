@@ -1,0 +1,14 @@
+services:
+  tsbot-api:
+    image: ghcr.io/regover13/tsbot:latest
+    restart: unless-stopped
+    network_mode: host          # → localhost:25639 (ClientQuery) direkt erreichbar
+    user: "1000:1000"
+    env_file: /opt/tsbot/config/config.env
+    volumes:
+      - /opt/tsbot/data:/opt/tsbot/data
+      - /run/user/1000/pulse:/run/user/1000/pulse  # PulseAudio-Socket
+      - /home/tsbot/.ts3client:/home/tsbot/.ts3client:ro  # ClientQuery-API-Key
+    environment:
+      - XDG_RUNTIME_DIR=/run/user/1000
+      - PULSE_SERVER=unix:/run/user/1000/pulse/native
