@@ -733,12 +733,6 @@ tail -f /home/tsbot/ts3client.log
 journalctl -u tsbot-pulseaudio --since "5 min ago"
 ```
 
-### Aufnahme stoppt automatisch nach ~10 Minuten
-
-Der TS3-Client schließt inaktive ClientQuery-Verbindungen nach 600 Sekunden.
-Der Bot sendet alle 60s einen Keepalive – ist das Update eingespielt, tritt dieses Problem nicht mehr auf.
-Falls es dennoch passiert: Container neu starten (`docker restart tsbot-tsbot-api-1`).
-
 ### ServerQuery-Verbindung schlägt fehl
 
 ```bash
