@@ -262,7 +262,8 @@ Antworte NUR mit folgendem JSON:
   "agenda_punkte": [
     {{
       "punkt": "Exakter Name des Agenda-Punkts",
-      "zusammenfassung": "Vollständige sachliche Zusammenfassung aller besprochenen Inhalte",
+      "zusammenfassung": "Kurze einleitende Zusammenfassung (1-2 Sätze: wer hat was präsentiert)",
+      "details": ["Einzelner Aufzählungspunkt", "Weiterer Punkt"],
       "beschluesse": ["Beschluss oder Aktionspunkt 1"],
       "zeitraum": "00:00 - 08:30",
       "segmente": ["[00:00 - 00:45] Relevanter Text"]
@@ -272,7 +273,8 @@ Antworte NUR mit folgendem JSON:
 
 Hinweise:
 - Jeden Agenda-Punkt aufführen, auch ohne Transkript-Treffer
-- Zusammenfassung sachlich und neutral
+- Zusammenfassung sachlich und neutral, nur 1-2 einleitende Sätze
+- details: Aufzählungsliste für Events, Programmpunkte, Termine, Stichpunkte – leer lassen wenn kein Listeninhalt vorhanden
 - Beschlüsse = konkrete Entscheidungen oder Aktionspunkte
 - Setze include_transkript auf false, wenn der Nutzer per Instruktion das Transkript aus dem Protokoll ausschließen möchte"""
 
@@ -495,6 +497,10 @@ def erstelle_protokoll(transkript_pfad: str, thema: str,
 
             if eintrag.get("zusammenfassung"):
                 doc.add_paragraph(eintrag["zusammenfassung"])
+
+            if eintrag.get("details"):
+                for d in eintrag["details"]:
+                    doc.add_paragraph(d, style='List Bullet')
 
             if eintrag.get("beschluesse"):
                 doc.add_paragraph().add_run("Beschlüsse / Aktionspunkte:").bold = True

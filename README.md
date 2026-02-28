@@ -359,8 +359,8 @@ Alle Einstellungen in `/opt/tsbot/config/config.env` (Linux) bzw. `config.txt` (
 
 | Modell | Größe | CPU-Zeit/h Audio | Empfehlung |
 |--------|-------|-----------------|------------|
-| `small` | 460 MB | ~15–20 Min | Standard-VPS |
-| `medium` | 1,5 GB | ~30–40 Min | Stärkere VPS (4+ Kerne) |
+| `small` | 460 MB | ~15–20 Min | Kleiner VPS, schnellste Option |
+| `medium` | 1,5 GB | ~30–40 Min | **Standard** – gutes Qualitäts-/Zeitverhältnis |
 | `large` | 2,9 GB | ~60–90 Min | Starker Server oder GPU |
 
 ---
@@ -385,7 +385,11 @@ Erreichbar unter `https://tsbot.devprops.de` (Login mit `API_USER` / `API_SECRET
    Teilnehmerliste im Protokoll.
 7. **■ Aufnahme stoppen** → Bot verlässt den Kanal, MP3 wird gespeichert.
    Automatische Pipeline: Transkription → **Sprecher-Annotation** → Protokollerstellung
-8. **Sprecher-Annotation** — Der Bot erfasst während der Aufnahme per ClientQuery-Event
+8. **Protokoll-Struktur** — Claude gibt pro Agenda-Punkt optional ein `details`-Array zurück.
+   Inhalte mit Listencharakter (Events, Programmpunkte, Termine, Stichpunkte) werden
+   als Bullet-Liste ins Word-Dokument eingefügt (zwischen Zusammenfassung und Beschlüssen).
+   Fließtext ohne Listencharakter erscheint als normaler Absatz.
+9. **Sprecher-Annotation** — Der Bot erfasst während der Aufnahme per ClientQuery-Event
    `notifytalkstatuschange`, wer wann spricht. Nach der Transkription werden die
    Whisper-Segmente automatisch mit Sprechernamen versehen:
    `[00:45 - 01:30] Tobias Wäschle: Hier der gesprochene Text`
@@ -658,7 +662,7 @@ Häufige Ursachen:
 
 ```ini
 # In config.env kleineres Modell wählen:
-WHISPER_MODEL=small
+WHISPER_MODEL=small   # statt medium – halbiert die Transkriptionszeit
 ```
 
 ### Web-UI zeigt 401 Unauthorized
