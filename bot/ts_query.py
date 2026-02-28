@@ -36,6 +36,7 @@ class TSQueryTracker:
         # Akkumulierte Teilnehmer: key → {"name": str, "frs": str, "joined_at": str}
         self._participants: dict[str, dict] = {}
         self._participants_by_channel: dict[int, list] = {}  # Abgeschlossene Kanäle
+        self._channel_name_cache: dict[int, str] = {}        # cid → Kanalname (beim Start geladen)
         self._lock = threading.Lock()
         self._conn = None
         self._running = False
@@ -58,6 +59,9 @@ class TSQueryTracker:
             client_login_password=self._password,
         )
         self._conn.use(sid=self._server_id)
+
+        # Kanalnamen vorab cachen – vor dem Event-Loop-Start (keine Race Condition)
+        self._lade_kanal_namen()
 
         # Sofort aktuelle Teilnehmer laden (alle auf dem Server)
         self._lade_aktuelle_teilnehmer()
@@ -102,7 +106,9 @@ class TSQueryTracker:
         with self._lock:
             self._participants.clear()
         logger.info("Tracking gewechselt: Kanal %d → %d – Teilnehmerliste zurückgesetzt.", old, channel_id)
-        self._lade_aktuelle_teilnehmer()
+        # Kein _lade_aktuelle_teilnehmer() hier – würde die gemeinsame ServerQuery-Verbindung
+        # mit dem Event-Loop-Thread konkurrieren und blockieren. Teilnehmer werden via
+        # notifycliententerview-Events und 30s-Polling nachgetragen.
 
     def get_participants_by_channel(self) -> dict:
         """Gibt alle Teilnehmer gruppiert nach Kanal-ID zurück (inkl. aktuellen Kanal)."""
@@ -111,19 +117,26 @@ class TSQueryTracker:
         return result
 
     def get_channel_name(self, channel_id: int) -> str:
-        """Gibt den Kanalnamen für eine gegebene Kanal-ID zurück."""
-        if not self._running or not self._conn:
-            return str(channel_id)
+        """Gibt den Kanalnamen für eine gegebene Kanal-ID zurück (aus Cache)."""
+        return self._channel_name_cache.get(channel_id, str(channel_id))
+
+    # ── Interne Methoden ──────────────────────────────────────
+
+    def _lade_kanal_namen(self):
+        """Lädt alle Kanalnamen einmalig in den Cache (vor dem Event-Loop-Start)."""
         try:
             resp = self._conn.channellist()
             for c in resp.parsed:
-                if int(c.get("cid", -1)) == channel_id:
-                    return c.get("channel_name", str(channel_id))
+                try:
+                    cid = int(c.get("cid", -1))
+                    name = c.get("channel_name", "")
+                    if cid > 0 and name:
+                        self._channel_name_cache[cid] = name
+                except (ValueError, TypeError):
+                    pass
+            logger.debug("Kanalnamen gecacht: %d Kanäle", len(self._channel_name_cache))
         except Exception as e:
-            logger.warning("Kanalname für ID %d nicht ermittelbar: %s", channel_id, e)
-        return str(channel_id)
-
-    # ── Interne Methoden ──────────────────────────────────────
+            logger.warning("Fehler beim Cachen der Kanalnamen: %s", e)
 
     def _lade_aktuelle_teilnehmer(self):
         """Lädt alle aktuell auf dem Server verbundenen Clients (kanalunabhängig)."""
