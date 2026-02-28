@@ -150,6 +150,18 @@ API-Key eintragen: `ANTHROPIC_API_KEY=sk-ant-...`
 Getestet auf **Ubuntu 22.04 / 24.04 LTS**.
 Voraussetzung: Root-Zugang, ca. 6 GB freier Speicher (für Python-Umgebung + Whisper-Modell).
 
+| Schritt | Pflicht? |
+|---------|----------|
+| 1 – Repo klonen | ✅ Pflicht |
+| 2 – Systempakete | ✅ Pflicht |
+| 3 – User anlegen | ✅ Pflicht |
+| 4 – Verzeichnisse | ✅ Pflicht |
+| 5 – Python venv | ⚪ Optional (nur für Tests ohne Docker) |
+| 6 – config.env | ✅ Pflicht |
+| 7 – TS3-Client + Lizenz | ✅ Pflicht (einmalig) |
+| 8 – systemd (`tsbot-pulseaudio`) | ✅ Pflicht |
+| 9 – Erreichbarkeit testen | ✅ Pflicht |
+
 ### Schritt 1 – Als root einloggen und Repo klonen
 
 ```bash
@@ -307,6 +319,12 @@ ufw allow 8080/tcp
 
 Der Server-Betrieb läuft via **Docker + GitHub Actions**.
 Bei jedem Push auf `master` wird automatisch ein neues Image gebaut und deployed – kein manuelles `git pull` mehr.
+
+| Schritt | Pflicht? |
+|---------|----------|
+| Portainer installieren + Stack einrichten | ✅ Pflicht |
+| GHCR-Registry in Portainer konfigurieren | ✅ Pflicht |
+| GitHub Actions CI/CD (Auto-Deploy) | ⚪ Optional – wer kein automatisches Deployment braucht, kann den Container manuell mit `docker compose up -d` starten |
 
 ### Architektur
 
