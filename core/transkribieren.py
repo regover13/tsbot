@@ -37,7 +37,13 @@ def _whisper_segmente(audio_pfad: str, model_name: str, device: str) -> tuple:
     model = _whisper_model_cache[cache_key]
 
     print("Transkribiere...")
-    segments_gen, _ = model.transcribe(audio_pfad, language="de", word_timestamps=True)
+    segments_gen, _ = model.transcribe(
+        audio_pfad,
+        language="de",
+        word_timestamps=True,
+        vad_filter=True,
+        condition_on_previous_text=False,
+    )
 
     segs = [
         {"start": s.start, "end": s.end, "text": s.text.strip()}
