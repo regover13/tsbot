@@ -121,16 +121,12 @@ chown -R tsbot:tsbot /opt/tsbot
 
 ### Schritt 5 – Python-Umgebung aufbauen
 
-> **Hinweis:** `torch` (CPU-only) ist ~2,5 GB Download. Einmalig, danach gecacht.
+> **Hinweis:** Der Server-Betrieb läuft seit der Docker-Migration (Abschnitt 3) nicht mehr über eine lokale venv. Dieser Schritt ist nur noch für manuelle Tests ohne Docker relevant.
 
 ```bash
 sudo -u tsbot python3.12 -m venv /opt/tsbot/venv
 sudo -u tsbot /opt/tsbot/venv/bin/pip install --upgrade pip
-
-# CPU-only PyTorch + alle Abhängigkeiten
-sudo -u tsbot /opt/tsbot/venv/bin/pip install \
-    --extra-index-url https://download.pytorch.org/whl/cpu \
-    -r /opt/tsbot/requirements.txt
+sudo -u tsbot /opt/tsbot/venv/bin/pip install -r /opt/tsbot/requirements.txt
 ```
 
 ### Schritt 6 – Konfiguration anlegen
@@ -188,26 +184,36 @@ Nach der Lizenz-Akzeptanz x11vnc wieder beenden:
 pkill x11vnc
 ```
 
-### Schritt 8 – systemd Services installieren
+### Schritt 8 – systemd Service installieren
+
+> **Hinweis:** `tsbot-api.service` wird seit der Docker-Migration nicht mehr benötigt.
+> Die FastAPI-App läuft im Docker-Container (verwaltet via Portainer, Abschnitt 3).
+> Nur `tsbot-pulseaudio.service` muss auf dem Host laufen.
 
 ```bash
 # Zurück als root
 exit
 
 cp /opt/tsbot/systemd/tsbot-pulseaudio.service /etc/systemd/system/
-cp /opt/tsbot/systemd/tsbot-api.service        /etc/systemd/system/
+
+# start_pulseaudio.sh nach /usr/local/bin/ installieren (bleibt bei Cleanups erhalten):
+cp /opt/tsbot/scripts/start_pulseaudio.sh /usr/local/bin/start_tsbot_pulseaudio.sh
+chmod +x /usr/local/bin/start_tsbot_pulseaudio.sh
+
+# Pfad in der Service-Datei anpassen:
+sed -i 's|ExecStart=/opt/tsbot/scripts/start_pulseaudio.sh|ExecStart=/usr/local/bin/start_tsbot_pulseaudio.sh|' \
+    /etc/systemd/system/tsbot-pulseaudio.service
 
 systemctl daemon-reload
-systemctl enable tsbot-pulseaudio tsbot-api
+systemctl enable tsbot-pulseaudio
 systemctl start  tsbot-pulseaudio
-systemctl start  tsbot-api
 ```
 
 **Status prüfen:**
 
 ```bash
-systemctl status tsbot-pulseaudio tsbot-api
-journalctl -u tsbot-api -f      # Live-Log
+systemctl status tsbot-pulseaudio
+journalctl -u tsbot-pulseaudio -f
 ```
 
 ### Schritt 9 – Erreichbarkeit testen
@@ -349,13 +355,13 @@ Alle Einstellungen in `/opt/tsbot/config/config.env` (Linux) bzw. `config.txt` (
 | `API_USER` | Web-UI Benutzername | `admin` |
 | `API_SECRET` | Web-UI Passwort | `geheim` |
 
-**Whisper-Modelle nach Hardware:**
+**Whisper-Modelle nach Hardware** (faster-whisper mit int8 auf CPU):
 
 | Modell | Größe | CPU-Zeit/h Audio | Empfehlung |
 |--------|-------|-----------------|------------|
-| `small` | 460 MB | ~5 Min | Sehr schwache VPS |
-| `medium` | 1,5 GB | ~10 Min | Standard-VPS (2–4 Kerne) |
-| `large` | 2,9 GB | ~20 Min | Starker Server oder GPU |
+| `small` | 460 MB | ~15–20 Min | Standard-VPS |
+| `medium` | 1,5 GB | ~30–40 Min | Stärkere VPS (4+ Kerne) |
+| `large` | 2,9 GB | ~60–90 Min | Starker Server oder GPU |
 
 ---
 
@@ -488,13 +494,13 @@ Der Server-Zugang erfolgt ausschließlich per **SSH-Schlüssel** (kein Passwort-
 
 ```bash
 # SSH-Config (~/.ssh/config) auf dem lokalen Rechner:
-Host tsbot
+Host server
     HostName DEINE_SERVER_IP
-    User tsbot
+    User root
     IdentityFile ~/.ssh/tsbot_server
 
 # Verbinden:
-ssh tsbot
+ssh server
 ```
 
 ### HTTPS + nginx
@@ -579,16 +585,30 @@ journalctl -u onedrive-backup -f
 ### Services starten nach Neustart nicht
 
 ```bash
-# Status beider Services prüfen:
-systemctl status tsbot-pulseaudio tsbot-api
+# Status prüfen:
+systemctl status tsbot-pulseaudio
+docker ps   # Container läuft?
 
-# Falls tsbot-api "dependency failed" zeigt:
-# → tsbot-pulseaudio zuerst starten, dann api:
+# tsbot-pulseaudio manuell starten:
 systemctl start tsbot-pulseaudio
-systemctl start tsbot-api
+
+# Docker-Container neu starten (falls PulseAudio-Socket neu erstellt wurde):
+docker restart tsbot-tsbot-api-1
 
 # Live-Log beobachten:
-journalctl -u tsbot-pulseaudio -u tsbot-api -f
+journalctl -u tsbot-pulseaudio -f
+docker logs tsbot-tsbot-api-1 -f
+```
+
+### start_tsbot_pulseaudio.sh fehlt (nach Server-Cleanup)
+
+Das Script liegt unter `/usr/local/bin/start_tsbot_pulseaudio.sh` – nicht in `/opt/tsbot/scripts/`.
+Falls es fehlt, aus dem Git-Repo wiederherstellen:
+
+```bash
+git show HEAD:scripts/start_pulseaudio.sh > /usr/local/bin/start_tsbot_pulseaudio.sh
+chmod +x /usr/local/bin/start_tsbot_pulseaudio.sh
+systemctl restart tsbot-pulseaudio
 ```
 
 ### PulseAudio-Sink fehlt nach Neustart
