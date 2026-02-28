@@ -66,6 +66,8 @@ def transkribiere(audio_pfad: str, ausgabe_ordner: str = None, model_name: str =
     segs, volltext = _whisper_segmente(audio_pfad, model_name, device)
 
     # ── Datei schreiben ───────────────────────────────────────
+    # Ordner nochmals anlegen – könnte während der langen Transkription gelöscht worden sein
+    os.makedirs(ausgabe_ordner, exist_ok=True)
     with open(ausgabe_datei, "w", encoding="utf-8") as f:
         f.write("TRANSKRIPT\n")
         f.write(f"Datei: {os.path.basename(audio_pfad)}\n")

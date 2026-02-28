@@ -136,6 +136,8 @@ class TSClientMonitor:
 
             # Kurz warten bis TS3-Client vollständig mit Server verbunden ist
             time.sleep(3)
+            if not self._running:
+                return  # Session bereits gestoppt während dem Sleep
 
             # Eigene Client-ID ermitteln
             s.sendall(b"whoami\n")
