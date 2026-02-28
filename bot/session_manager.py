@@ -185,7 +185,7 @@ class SessionManager:
             # Aktuellen Kanal ebenfalls eintragen
             cid = self._current_channel_id
             if cid not in channel_names:
-                channel_names[cid] = str(cid)
+                channel_names[cid] = self._tracker.get_channel_name(cid)
 
             raw = self._tracker.get_participants_by_channel()
             for ch_id, parts in raw.items():

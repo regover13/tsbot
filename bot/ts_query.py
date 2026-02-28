@@ -193,14 +193,17 @@ class TSQueryTracker:
 
     def _parse_nickname(self, nick: str) -> dict:
         """
-        Parst TeamSpeak-Nickname im Format "Vorname Nachname/FRSxxx".
+        Parst TeamSpeak-Nickname im Format "Vorname Nachname/FRSxxx" oder
+        "Vorname Nachname FRS999N ...".
+        FRS-Nummern können einen Buchstaben-Suffix haben (NATO-Alphabet, z.B. FRS999N).
         Gibt {"name": str, "frs": str} zurück.
         """
         nick = nick.strip()
-        m = re.match(r'^(.+?)/(FRS\d+)', nick, re.IGNORECASE)
+        # FRS-Nummer irgendwo im Nickname suchen: FRS + Ziffern + opt. Buchstabe
+        m = re.search(r'\bFRS(\d+[A-Z]?)\b', nick, re.IGNORECASE)
         if m:
-            return {
-                "name": m.group(1).strip(),
-                "frs":  m.group(2).upper(),
-            }
+            frs = m.group(0).upper()
+            # Name = alles vor dem FRS-Match, Trennzeichen bereinigen
+            name_part = nick[:m.start()].strip().rstrip('/( ')
+            return {"name": name_part, "frs": frs}
         return {"name": nick, "frs": ""}
