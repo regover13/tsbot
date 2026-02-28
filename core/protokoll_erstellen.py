@@ -170,7 +170,8 @@ Format:
 # ── Claude API: Transkript den Agenda-Punkten zuordnen ─────────
 def ki_zuordnung(volltext: str, segmente: list, agenda: list, api_key: str, modell: str,
                  extra_instruktionen: str = None,
-                 kanal_wechsel: list = None) -> tuple:
+                 kanal_wechsel: list = None,
+                 teilnehmer: list = None) -> tuple:
     try:
         import anthropic
     except ImportError:
@@ -200,8 +201,25 @@ def ki_zuordnung(volltext: str, segmente: list, agenda: list, api_key: str, mode
     if extra_instruktionen and extra_instruktionen.strip():
         extra_block = f"\nZUSÄTZLICHE INSTRUKTIONEN DES NUTZERS:\n{extra_instruktionen.strip()}\n"
 
+    # ── Teilnehmer-Block ──────────────────────────────────────
+    teilnehmer_block = ""
+    if teilnehmer:
+        zeilen = []
+        for t in teilnehmer:
+            name = t.get("name", "")
+            frs  = t.get("frs", "")
+            zeilen.append(f"- {name}" + (f" ({frs})" if frs else ""))
+        teilnehmer_block = "\nTEILNEHMER (exakte Namen und Kennzeichen – unverändert übernehmen):\n" \
+                           + "\n".join(zeilen) + "\n"
+
     prompt = f"""Du bist ein professioneller Protokollschreiber. Analysiere das Transkript und weise jeden Abschnitt dem passenden Agenda-Punkt zu.
 
+WICHTIGE REGELN:
+- Verwende Namen und Kennzeichen EXAKT wie in der Teilnehmerliste angegeben
+- FRS-Kennzeichen (z.B. FRS49, FRS999N) NIEMALS ausschreiben oder übersetzen – sie bleiben unverändert
+- Buchstaben am Ende von FRS-Kennzeichen (z.B. das N in FRS999N) sind Teil des Kennzeichens, kein NATO-Alphabet
+- Verwechsle ähnliche Namen nicht (z.B. "Dobias" ≠ "Tobias")
+{teilnehmer_block}
 AGENDA:
 {agenda_text}
 
@@ -292,10 +310,22 @@ def erstelle_protokoll(transkript_pfad: str, thema: str,
     ki_punkte = []
     include_transkript = True
     if agenda and hat_api:
+        # Alle Teilnehmer aus beiden Quellen zusammenführen
+        alle_teilnehmer = list(teilnehmer_liste or [])
+        if teilnehmer_pro_kanal:
+            seen = {t.get("frs") or t.get("name") for t in alle_teilnehmer}
+            for tl in teilnehmer_pro_kanal.values():
+                for t in tl:
+                    key = t.get("frs") or t.get("name")
+                    if key not in seen:
+                        alle_teilnehmer.append(t)
+                        seen.add(key)
+
         ki_punkte, include_transkript = ki_zuordnung(
             volltext, segmente, agenda, api_key, modell,
             extra_instruktionen=extra_instruktionen,
             kanal_wechsel=kanal_wechsel or [],
+            teilnehmer=alle_teilnehmer,
         )
         if ki_punkte:
             print(f"Claude hat {len(ki_punkte)} Agenda-Punkte zugeordnet.")
