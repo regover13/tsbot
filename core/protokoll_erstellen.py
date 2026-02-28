@@ -167,23 +167,10 @@ Format:
     return sorted(eindeutig, key=lambda x: x["name"].lower())
 
 
-# ── Hilfsfunktion: Sprecher-IDs aus Segmenten extrahieren ─────
-def _erkenne_sprecher(segmente: list) -> list:
-    """Gibt sortierte Liste aller SPRECHER_X-IDs aus den Segmenten zurück."""
-    sprecher = set()
-    for _, _, text in segmente:
-        m = re.match(r'^\[(SPRECHER_\d+)\]', text.strip())
-        if m:
-            sprecher.add(m.group(1))
-    return sorted(sprecher)
-
-
 # ── Claude API: Transkript den Agenda-Punkten zuordnen ─────────
 def ki_zuordnung(volltext: str, segmente: list, agenda: list, api_key: str, modell: str,
                  extra_instruktionen: str = None,
-                 teilnehmer_liste: list = None,
-                 kanal_wechsel: list = None,
-                 teilnehmer_pro_kanal: dict = None) -> list:
+                 kanal_wechsel: list = None) -> list:
     try:
         import anthropic
     except ImportError:
@@ -193,44 +180,6 @@ def ki_zuordnung(volltext: str, segmente: list, agenda: list, api_key: str, mode
     print("Sende Transkript an Claude API zur Zuordnung...")
     transkript_text = "\n".join([f"[{s} - {e}] {t}" for s, e, t in segmente]) if segmente else volltext
     agenda_text = "\n".join([f"{i+1}. {p}" for i, p in enumerate(agenda)])
-
-    # ── Sprecher-Mapping-Block (nur wenn Diarization-Tags vorhanden) ──
-    sprecher_block = ""
-    sprecher_ids = _erkenne_sprecher(segmente) if segmente else []
-    if sprecher_ids and (teilnehmer_pro_kanal or teilnehmer_liste):
-        if teilnehmer_pro_kanal:
-            alle = [p for parts in teilnehmer_pro_kanal.values() for p in parts]
-            seen_keys = set(); unique = []
-            for p in alle:
-                k = p.get("frs") or p.get("name", "")
-                if k not in seen_keys:
-                    seen_keys.add(k); unique.append(p)
-            teilnehmer_text = "\n".join(
-                f"  - {t['name']}" + (f" ({t['frs']})" if t.get("frs") else "")
-                for t in unique
-            )
-        else:
-            teilnehmer_text = "\n".join(
-                f"  - {t['name']}" + (f" ({t['frs']})" if t.get("frs") else "")
-                for t in teilnehmer_liste
-            )
-        sprecher_block = f"""
-SPRECHERIDENTIFIKATION:
-Das Transkript enthält automatisch erkannte, anonyme Sprecher ({', '.join(sprecher_ids)}).
-Bekannte Teilnehmer laut ServerQuery:
-{teilnehmer_text}
-
-Versuche die Sprecher den Teilnehmern zuzuordnen, wo es aus dem Kontext möglich ist
-(z.B. wenn jemand mit Namen angesprochen wird, sich vorstellt oder über bekannte Themen spricht).
-Verwende in Zusammenfassungen und Beschlüssen die echten Namen statt SPRECHER_X, wenn du dir sicher bist.
-Wenn die Zuordnung unklar ist, behalte SPRECHER_X bei.
-"""
-    elif sprecher_ids:
-        sprecher_block = f"""
-SPRECHERIDENTIFIKATION:
-Das Transkript enthält automatisch erkannte Sprecher ({', '.join(sprecher_ids)}).
-Keine Teilnehmerliste verfügbar – behalte SPRECHER_X in Zusammenfassungen bei.
-"""
 
     # ── Kanalwechsel-Block ────────────────────────────────────
     kanal_block = ""
@@ -258,7 +207,7 @@ AGENDA:
 
 TRANSKRIPT:
 {transkript_text}
-{sprecher_block}{kanal_block}{extra_block}
+{kanal_block}{extra_block}
 Antworte NUR mit folgendem JSON:
 {{
   "agenda_punkte": [
@@ -342,9 +291,7 @@ def erstelle_protokoll(transkript_pfad: str, thema: str,
         ki_punkte = ki_zuordnung(
             volltext, segmente, agenda, api_key, modell,
             extra_instruktionen=extra_instruktionen,
-            teilnehmer_liste=teilnehmer_liste,
             kanal_wechsel=kanal_wechsel or [],
-            teilnehmer_pro_kanal=teilnehmer_pro_kanal,
         )
         if ki_punkte:
             print(f"Claude hat {len(ki_punkte)} Agenda-Punkte zugeordnet.")

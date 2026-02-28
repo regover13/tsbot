@@ -15,12 +15,11 @@ Zwei Betriebsmodi:
 1. [Windows-Setup (lokal)](#1-windows-setup-lokal)
 2. [Linux-Server-Setup (Bot)](#2-linux-server-setup-bot)
 3. [Konfiguration](#3-konfiguration)
-4. [Optionale Sprechertrennung](#4-optionale-sprechertrennung-diarization)
-5. [Web-Interface bedienen](#5-web-interface-bedienen)
-6. [Projektstruktur](#6-projektstruktur)
-7. [Zugriff und Sicherheit](#7-zugriff-und-sicherheit)
-8. [Backup nach OneDrive](#8-backup-nach-onedrive)
-9. [Troubleshooting](#9-troubleshooting)
+4. [Web-Interface bedienen](#4-web-interface-bedienen)
+5. [Projektstruktur](#5-projektstruktur)
+6. [Zugriff und Sicherheit](#6-zugriff-und-sicherheit)
+7. [Backup nach OneDrive](#7-backup-nach-onedrive)
+8. [Troubleshooting](#8-troubleshooting)
 
 ---
 
@@ -246,8 +245,6 @@ Alle Einstellungen in `/opt/tsbot/config/config.env` (Linux) bzw. `config.txt` (
 | `TS_SERVER_ID` | Virtual Server ID | `1` |
 | `TS_CHANNEL_ID` | Kanal-ID für Aufnahme | `42` |
 | `WHISPER_MODEL` | Modellgröße | `medium` |
-| `USE_DIARIZATION` | Sprechertrennung | `false` |
-| `HF_TOKEN` | HuggingFace Token | `hf_...` |
 | `API_PORT` | Web-UI Port | `8080` |
 | `API_USER` | Web-UI Benutzername | `admin` |
 | `API_SECRET` | Web-UI Passwort | `geheim` |
@@ -262,45 +259,7 @@ Alle Einstellungen in `/opt/tsbot/config/config.env` (Linux) bzw. `config.txt` (
 
 ---
 
-## 4. Optionale Sprechertrennung (Diarization)
-
-Jeder Sprecher bekommt ein Tag (`[SPRECHER_0]`, `[SPRECHER_1]`, …).
-Claude versucht beim Protokollieren die Sprecher den Teilnehmern aus dem ServerQuery zuzuordnen.
-
-**Einrichtung (einmalig):**
-
-```bash
-# 1. HuggingFace-Account erstellen: https://huggingface.co
-# 2. Token generieren: https://huggingface.co/settings/tokens (Read-Rechte reichen)
-# 3. Lizenzen akzeptieren (einmalig im Browser, mit dem HF-Account eingeloggt):
-#    https://huggingface.co/pyannote/speaker-diarization-3.1
-#    https://huggingface.co/pyannote/segmentation-3.0
-# 4. whisperx installieren:
-/opt/tsbot/venv/bin/pip install whisperx
-# 5. In config.env eintragen:
-USE_DIARIZATION=true
-HF_TOKEN=hf_dein_token
-```
-
-> **Versionshinweis:** Getestet und kompatibel mit **whisperx ≥ 3.8.1** und **pyannote.audio ≥ 4.0.4**.
-> Ab pyannote.audio 4.x heißt der Token-Parameter `token` (statt früher `use_auth_token`) –
-> der Code verwendet bereits die neue API.
-
-**Mehraufwand:**
-- +~30–50 % Rechenzeit gegenüber plain Whisper
-- Beim ersten Start werden die pyannote-Modelle (~1 GB) heruntergeladen und gecacht
-
-**Deaktivieren:**
-
-```ini
-USE_DIARIZATION=false
-```
-
-Plain Whisper läuft dann ohne HF-Token.
-
----
-
-## 5. Web-Interface bedienen
+## 4. Web-Interface bedienen
 
 Erreichbar unter `https://tsbot.devprops.de` (Login mit `API_USER` / `API_SECRET`).
 
@@ -343,7 +302,7 @@ Liste aller abgeschlossenen Sitzungen mit Download-Links für:
 
 ---
 
-## 6. Projektstruktur
+## 5. Projektstruktur
 
 ```
 /opt/tsbot/  (Linux-Server) bzw. tsbot/ (Windows-Repo)
@@ -397,7 +356,7 @@ Liste aller abgeschlossenen Sitzungen mit Download-Links für:
 
 ---
 
-## 7. Zugriff und Sicherheit
+## 6. Zugriff und Sicherheit
 
 ### Web-Interface
 
@@ -465,7 +424,7 @@ apt install wireguard
 
 ---
 
-## 8. Backup nach OneDrive
+## 7. Backup nach OneDrive
 
 Sitzungsdaten (Audio, Transkripte, Protokolle) werden täglich automatisch nach OneDrive gesichert.
 Verwendet wird **rclone** mit `sync` – OneDrive spiegelt immer den aktuellen Server-Stand.
@@ -500,7 +459,7 @@ journalctl -u onedrive-backup -f
 
 ---
 
-## 9. Troubleshooting
+## 8. Troubleshooting
 
 ### Services starten nach Neustart nicht
 
@@ -577,36 +536,6 @@ WHISPER_MODEL=small
 journalctl -u tsbot-api -n 50 --no-pager
 # Häufig: config.env fehlt oder Python-Pakete nicht installiert
 ```
-
-### Diarization-Fehler: „Access token is required"
-
-HF_TOKEN in `config.env` fehlt oder ist ungültig. Lizenzen auf HuggingFace akzeptiert?
-Prüfen: https://huggingface.co/pyannote/speaker-diarization-3.1
-
-### Diarization-Fehler: „unexpected keyword argument 'use_auth_token'"
-
-Tritt auf mit älteren Codeständen und **pyannote.audio ≥ 4.0.4**, weil der Parameter
-von `use_auth_token` zu `token` umbenannt wurde. Im aktuellen Stand des Repos ist das
-bereits korrigiert. Lösung: Repository auf den neuesten Stand bringen und neu deployen:
-
-```bash
-cd /opt/tsbot && git pull
-systemctl restart tsbot-api
-```
-
-### Diarization: „keine Sprecher zugewiesen" im Transkript
-
-Tritt auf wenn pyannote das Audio nicht direkt dekodieren kann (torchcodec-Fehler im Log).
-Das wird automatisch umgangen – das Audio wird als vorgeladener Tensor übergeben statt als
-Dateipfad. Falls das Problem weiterhin besteht:
-
-```bash
-# whisperx auf aktuelle Version aktualisieren:
-/opt/tsbot/venv/bin/pip install --upgrade whisperx
-```
-
-Kürzere Aufnahmen (< 2 min) können 0 Sprecher liefern, weil pyannote zu wenig
-Audiomaterial zur Trennung hat. Das ist kein Fehler, sondern ein Modell-Limit.
 
 ---
 

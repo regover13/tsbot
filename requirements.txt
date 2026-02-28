@@ -11,14 +11,6 @@
 openai-whisper
 torch --extra-index-url https://download.pytorch.org/whl/cpu
 
-# Optionale Sprechertrennung (USE_DIARIZATION=true)
-# whisperx kombiniert Whisper + Alignment + pyannote Diarization.
-# Voraussetzung: HuggingFace-Account + Token (kostenlos), dann einmalig
-# die pyannote-Modell-Lizenzen akzeptieren:
-#   https://huggingface.co/pyannote/speaker-diarization-3.1
-#   https://huggingface.co/pyannote/segmentation-3.0
-whisperx
-
 # Protokoll-Generator
 anthropic
 python-docx
