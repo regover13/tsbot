@@ -16,6 +16,9 @@ def _fmt(sek: float) -> str:
     return f"{int(sek // 60):02d}:{int(sek % 60):02d}"
 
 
+_whisper_model_cache: dict = {}  # (model_name, device) → WhisperModel
+
+
 def _whisper_segmente(audio_pfad: str, model_name: str, device: str) -> tuple:
     """
     Transkription mit faster-whisper (CTranslate2).
@@ -24,8 +27,14 @@ def _whisper_segmente(audio_pfad: str, model_name: str, device: str) -> tuple:
     """
     from faster_whisper import WhisperModel
     compute_type = "float16" if device == "cuda" else "int8"
-    print(f"Lade Whisper-Modell ({model_name})...")
-    model = WhisperModel(model_name, device=device, compute_type=compute_type)
+    cache_key = (model_name, device)
+    if cache_key not in _whisper_model_cache:
+        print(f"Lade Whisper-Modell ({model_name})...")
+        _whisper_model_cache[cache_key] = WhisperModel(
+            model_name, device=device, compute_type=compute_type,
+            local_files_only=True
+        )
+    model = _whisper_model_cache[cache_key]
 
     print("Transkribiere...")
     segments_gen, _ = model.transcribe(audio_pfad, language="de", word_timestamps=True)

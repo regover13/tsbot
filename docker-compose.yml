@@ -12,3 +12,4 @@ services:
     environment:
       - XDG_RUNTIME_DIR=/run/user/1000
       - PULSE_SERVER=unix:/run/user/1000/pulse/native
+      - TZ=Europe/Berlin

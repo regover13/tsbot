@@ -11,7 +11,7 @@ import os
 import re
 import json
 import base64
-from datetime import datetime
+from datetime import datetime, timedelta
 from docx import Document
 from docx.shared import Pt, Cm, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -61,6 +61,18 @@ def lese_transkript(pfad: str) -> tuple:
     volltext_match = re.search(r'VOLLTEXT:\s*\n\n(.+)', inhalt, re.DOTALL)
     volltext = volltext_match.group(1).strip() if volltext_match else inhalt
     return volltext, segmente
+
+
+def _mm_ss_zu_uhrzeit(zeitraum: str, basis: datetime) -> str:
+    """Konvertiert 'MM:SS - MM:SS' → 'HH:MM - HH:MM Uhr' (absolute Uhrzeit)."""
+    pattern = re.compile(r'(\d+):(\d{2})\s*-\s*(\d+):(\d{2})')
+    m = pattern.match(zeitraum.strip())
+    if not m or not basis:
+        return zeitraum
+    def to_uhr(mm, ss):
+        dt = basis + timedelta(minutes=int(mm), seconds=int(ss))
+        return dt.strftime("%H:%M")
+    return f"{to_uhr(m.group(1), m.group(2))} - {to_uhr(m.group(3), m.group(4))} Uhr"
 
 
 def finde_alle_pngs(ordner: str) -> list:
@@ -171,7 +183,8 @@ Format:
 def ki_zuordnung(volltext: str, segmente: list, agenda: list, api_key: str, modell: str,
                  extra_instruktionen: str = None,
                  kanal_wechsel: list = None,
-                 teilnehmer: list = None) -> tuple:
+                 teilnehmer: list = None,
+                 session_started_at: datetime = None) -> tuple:
     try:
         import anthropic
     except ImportError:
@@ -185,15 +198,24 @@ def ki_zuordnung(volltext: str, segmente: list, agenda: list, api_key: str, mode
     # ── Kanalwechsel-Block ────────────────────────────────────
     kanal_block = ""
     if kanal_wechsel:
-        kanal_block = "\nKANALWECHSEL WÄHREND DER SITZUNG:\n"
+        kanal_block = "\nKANALWECHSEL WÄHREND DER SITZUNG (Zeitstempel relativ zum Aufnahmestart):\n"
         for evt in kanal_wechsel:
-            ts   = evt.get("timestamp", "")[:19].replace("T", " ")
             von  = evt.get("from_channel_name") or f"Kanal {evt.get('from_channel', '?')}"
             nach = evt.get("to_channel_name")   or f"Kanal {evt.get('to_channel', '?')}"
-            kanal_block += f"- {ts}: {von} → {nach}\n"
+            if session_started_at and evt.get("timestamp"):
+                try:
+                    evt_time = datetime.fromisoformat(evt["timestamp"])
+                    rel_sec  = max(0, int((evt_time - session_started_at).total_seconds()))
+                    rel_str  = f"{rel_sec // 60:02d}:{rel_sec % 60:02d}"
+                    kanal_block += f"- [{rel_str}] {von} → {nach}\n"
+                except Exception:
+                    kanal_block += f"- {von} → {nach}\n"
+            else:
+                kanal_block += f"- {von} → {nach}\n"
         kanal_block += (
-            "Erwähne diese Kanalwechsel an passender Stelle im Protokoll "
-            "(z.B. als Notiz zwischen den Agenda-Punkten).\n"
+            "Füge jeden Kanalwechsel in die Zusammenfassung des Agenda-Punkts ein, "
+            "in dessen MM:SS-Zeitraum er fällt (vergleiche den [MM:SS]-Zeitstempel "
+            "des Kanalwechsels mit dem zeitraum-Feld des jeweiligen Agenda-Punkts).\n"
         )
 
     # ── Zusätzliche Instruktionen ─────────────────────────────
@@ -219,6 +241,14 @@ WICHTIGE REGELN:
 - FRS-Kennzeichen (z.B. FRS49, FRS999N) NIEMALS ausschreiben oder übersetzen – sie bleiben unverändert
 - Buchstaben am Ende von FRS-Kennzeichen (z.B. das N in FRS999N) sind Teil des Kennzeichens, kein NATO-Alphabet
 - Verwechsle ähnliche Namen nicht (z.B. "Dobias" ≠ "Tobias")
+- Das Sprecher-Label im Format "[MM:SS - MM:SS] SPRECHER: text" ist AUTORITATIV – es zeigt wer gesprochen hat
+- Wenn ein Sprecher-Label "Dobias Weskly" anzeigt, hat Dobias Weskly gesprochen – auch wenn der Textinhalt einen anderen Namen erwähnt
+- Wer sich bei einer Vorstellungsrunde vorstellt, ist die Person laut Sprecher-Label, nicht der im Text genannte Name
+- Wer jemanden begrüßt, ist eine andere Person als diejenige, die sich vorstellt
+- Erfinde KEINE Informationen die nicht explizit im Transkript stehen – insbesondere keine Daten, Zahlen oder Alternativen (kein "bzw.", "oder", "ca." wenn nicht im Transkript)
+- Bei unklaren Angaben im Transkript: weglassen oder exakt das zitieren was gesagt wurde
+- Alle genannten Orte, Personen, Termine und Entscheidungen VOLLSTÄNDIG in die Zusammenfassung aufnehmen – nichts kürzen oder weglassen weil es "nebensächlich" wirkt
+- Verabschiedungen, Übergänge und Kanalwechsel-Ankündigungen im Transkript müssen im jeweiligen Agenda-Punkt erwähnt werden (z.B. "Tobias Wäschle verabschiedete die Teilnehmer und zog sich mit den Mitgliedern in den Staff-Kanal zurück")
 {teilnehmer_block}
 AGENDA:
 {agenda_text}
@@ -232,7 +262,7 @@ Antworte NUR mit folgendem JSON:
   "agenda_punkte": [
     {{
       "punkt": "Exakter Name des Agenda-Punkts",
-      "zusammenfassung": "Kurze sachliche Zusammenfassung (2-4 Sätze)",
+      "zusammenfassung": "Vollständige sachliche Zusammenfassung aller besprochenen Inhalte",
       "beschluesse": ["Beschluss oder Aktionspunkt 1"],
       "zeitraum": "00:00 - 08:30",
       "segmente": ["[00:00 - 00:45] Relevanter Text"]
@@ -250,6 +280,7 @@ Hinweise:
     message = client.messages.create(
         model=modell,
         max_tokens=8192,
+        temperature=0.3,
         messages=[{"role": "user", "content": prompt}]
     )
 
@@ -291,6 +322,19 @@ def erstelle_protokoll(transkript_pfad: str, thema: str,
     modell         = config.get("CLAUDE_MODEL", "claude-sonnet-4-5-20250929")
     hat_api        = bool(api_key and not api_key.startswith("sk-ant-HIER"))
 
+    # Ausgabepfad + Sitzungsdatum (wird für ki_zuordnung und Dokument benötigt)
+    ausgabe_ordner = os.path.dirname(transkript_pfad)
+    sitzungs_datum = datetime.now()
+    meta_path = os.path.join(ausgabe_ordner, "meta.json")
+    if os.path.exists(meta_path):
+        try:
+            with open(meta_path, encoding="utf-8") as f:
+                _meta = json.load(f)
+            if _meta.get("started_at"):
+                sitzungs_datum = datetime.fromisoformat(_meta["started_at"])
+        except Exception:
+            pass
+
     # Teilnehmer-Ermittlung:
     # Server-Modus: Liste direkt übergeben → Vision entfällt
     # Windows-Modus: PNGs im Skript-Ordner suchen und per Vision auswerten
@@ -326,6 +370,7 @@ def erstelle_protokoll(transkript_pfad: str, thema: str,
             extra_instruktionen=extra_instruktionen,
             kanal_wechsel=kanal_wechsel or [],
             teilnehmer=alle_teilnehmer,
+            session_started_at=sitzungs_datum,
         )
         if ki_punkte:
             print(f"Claude hat {len(ki_punkte)} Agenda-Punkte zugeordnet.")
@@ -333,21 +378,8 @@ def erstelle_protokoll(transkript_pfad: str, thema: str,
         print("HINWEIS: Kein API-Key – Protokoll ohne KI-Zuordnung.")
 
     # Ausgabe-Datei
-    ausgabe_ordner = os.path.dirname(transkript_pfad)
-    zeitstempel    = datetime.now().strftime("%Y%m%d_%H%M")
-    ausgabe_datei  = os.path.join(ausgabe_ordner, f"Protokoll_{zeitstempel}.docx")
-
-    # Sitzungsdatum aus meta.json (Fallback: heute)
-    sitzungs_datum = datetime.now()
-    meta_path = os.path.join(ausgabe_ordner, "meta.json")
-    if os.path.exists(meta_path):
-        try:
-            with open(meta_path, encoding="utf-8") as f:
-                _meta = json.load(f)
-            if _meta.get("started_at"):
-                sitzungs_datum = datetime.fromisoformat(_meta["started_at"])
-        except Exception:
-            pass
+    zeitstempel   = datetime.now().strftime("%Y%m%d_%H%M")
+    ausgabe_datei = os.path.join(ausgabe_ordner, f"Protokoll_{zeitstempel}.docx")
 
     doc = Document()
     setze_seitenraender(doc)
@@ -380,7 +412,10 @@ def erstelle_protokoll(transkript_pfad: str, thema: str,
         note = doc.add_paragraph()
         note.add_run("Hinweis – Kanalwechsel während der Sitzung:").bold = True
         for evt in kanal_wechsel:
-            ts   = evt.get("timestamp", "")[:19].replace("T", " ")
+            try:
+                ts = datetime.fromisoformat(evt["timestamp"]).strftime("%H:%M Uhr")
+            except Exception:
+                ts = evt.get("timestamp", "")[:19].replace("T", " ")
             von  = evt.get("from_channel_name") or f"Kanal {evt.get('from_channel', '?')}"
             nach = evt.get("to_channel_name")   or f"Kanal {evt.get('to_channel', '?')}"
             item = doc.add_paragraph(style="List Bullet")
@@ -451,8 +486,9 @@ def erstelle_protokoll(transkript_pfad: str, thema: str,
             h.runs[0].font.color.rgb = RGBColor(0x1F, 0x49, 0x7D)
 
             if eintrag.get("zeitraum"):
+                zeitraum_str = _mm_ss_zu_uhrzeit(eintrag["zeitraum"], sitzungs_datum)
                 p = doc.add_paragraph()
-                r = p.add_run(f"Zeitraum: {eintrag['zeitraum']}")
+                r = p.add_run(f"Zeitraum: {zeitraum_str}")
                 r.italic = True
                 r.font.color.rgb = RGBColor(0x70, 0x70, 0x70)
                 r.font.size = Pt(9)

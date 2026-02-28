@@ -558,9 +558,10 @@ class SessionManager:
         self._tracker            = None
         self._ts_client          = None
         self._monitor            = None
-        self._current_channel_id = 0
-        self._channel_events     = []
-        self._kicked_triggered   = False
+        self._current_channel_id  = 0
+        self._channel_events      = []
+        self._kicked_triggered    = False
+        self._initial_position_done = False
         self._loop               = None
         # Abgeschlossene Hintergrund-Pipelines bereinigen (laufende bleiben erhalten)
         self._background_pipelines = {
