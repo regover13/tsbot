@@ -16,7 +16,7 @@ COPY --chown=tsbot:tsbot requirements.txt .
 RUN pip install --no-cache-dir --user -r requirements.txt
 
 # Whisper-Modell vorab herunterladen (wird im Image gecacht → kein Download beim ersten Start)
-RUN python -c "from faster_whisper import WhisperModel; WhisperModel('small', device='cpu', compute_type='int8')"
+RUN python -c "from faster_whisper import WhisperModel; WhisperModel('medium', device='cpu', compute_type='int8')"
 
 # App-Code
 COPY --chown=tsbot:tsbot . .
