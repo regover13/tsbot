@@ -53,7 +53,7 @@ mit Standard Contractual Clauses (SCCs) bereit – die rechtliche Grundlage für
 
 - Web-Interface ist per **HTTP Basic Auth** geschützt (Zugangsdaten über HTTPS verschlüsselt)
 - Produktionsbetrieb läuft ausschließlich über **HTTPS** (Let's Encrypt)
-- **Brute-Force-Schutz** via nginx `limit_req`: max. 10 Requests/Minute pro IP, bei Überschreitung HTTP 429
+- **Brute-Force-Schutz** via nginx `limit_req`: max. 60 Requests/Minute pro IP (burst 30), bei Überschreitung HTTP 429
 - Server-Zugang nur per **SSH-Key** (kein Passwort-Login)
 - `config.env` mit allen Secrets ist in `.gitignore` und wird nie ins Repository committet
 
@@ -621,7 +621,7 @@ systemctl reload nginx
 Das Zertifikat wird automatisch erneuert (certbot-Timer läuft als systemd-Service).
 
 Die nginx-Konfiguration enthält außerdem **Brute-Force-Schutz** via `limit_req`:
-max. 10 Requests/Minute pro IP (burst 20), bei Überschreitung wird HTTP 429 zurückgegeben.
+max. 60 Requests/Minute pro IP (burst 30), bei Überschreitung wird HTTP 429 zurückgegeben.
 Die Konfiguration liegt im Repo unter `nginx/tsbot.conf`.
 
 ### WireGuard VPN (alternative zu HTTPS)
