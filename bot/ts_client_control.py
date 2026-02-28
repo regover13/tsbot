@@ -21,6 +21,17 @@ _CQ_PORT    = 25639
 _CQ_TIMEOUT = 8.0
 
 
+def _ts3_unescape(s: str) -> str:
+    """Entfernt TS3-Protokoll-Escaping (\\s → Leerzeichen etc.)."""
+    s = s.replace('\\\\', '\x00')
+    s = s.replace(r'\s', ' ')
+    s = s.replace(r'\p', '|')
+    s = s.replace(r'\/', '/')
+    s = s.replace(r'\n', '\n')
+    s = s.replace('\x00', '\\')
+    return s
+
+
 def _find_api_key() -> str:
     """Liest den ClientQuery API-Key aus ~/.ts3client/clientquery.ini."""
     candidates = [
@@ -94,12 +105,19 @@ class TSClientMonitor:
 
     def __init__(self,
                  on_moved:  "Callable[[int], None] | None" = None,
-                 on_kicked: "Callable[[], None] | None"    = None):
+                 on_kicked: "Callable[[], None] | None"    = None,
+                 recording_start: float = None):
         self._on_moved  = on_moved   # callback(new_channel_id: int)
         self._on_kicked = on_kicked  # callback()
         self._running   = False
         self._thread: threading.Thread | None = None
         self._own_clid: int | None = None
+
+        # Talk-Status-Tracking
+        self._recording_start  = recording_start or time.time()
+        self._talk_log:        list = []   # [{clid, name, start_sec, end_sec}]
+        self._current_talkers: dict = {}   # clid → abs_start_time
+        self._clid_names:      dict = {}   # clid → display name (Cache)
 
     def start(self):
         """Startet den Monitor-Thread."""
@@ -157,6 +175,16 @@ class TSClientMonitor:
             _read_response(s)
             logger.info("TSClientMonitor: Event-Monitoring aktiv (clid=%s).", self._own_clid)
 
+            # Clientnamen vorab cachen (für Talk-Status-Zuordnung)
+            s.sendall(b"clientlist\n")
+            cl_resp = _read_response(s)
+            for part in cl_resp.split("|"):
+                m_cl = re.search(r'\bclid=(\d+)', part)
+                m_nn = re.search(r'\bclient_nickname=(\S+)', part)
+                if m_cl and m_nn:
+                    self._clid_names[int(m_cl.group(1))] = _ts3_unescape(m_nn.group(1))
+            logger.debug("TSClientMonitor: %d Clientnamen gecacht.", len(self._clid_names))
+
             # Event-Loop: kurzer Timeout damit _running-Flag zeitnah geprüft wird
             s.settimeout(2.0)
             buf = ""
@@ -210,9 +238,64 @@ class TSClientMonitor:
                     logger.info("TSClientMonitor: Bot vom Server gekickt (notifyclientkicked).")
                     self._fire_kicked()
 
+        elif line.startswith("notifytalkstatuschange"):
+            m_clid   = re.search(r'\bclid=(\d+)', line)
+            m_status = re.search(r'\bstatus=(\d+)', line)
+            if m_clid and m_status:
+                clid   = int(m_clid.group(1))
+                status = int(m_status.group(1))
+                if clid == self._own_clid:
+                    return  # Bot selbst ignorieren
+                if status == 1:
+                    self._current_talkers[clid] = time.time()
+                elif status == 0:
+                    start_abs = self._current_talkers.pop(clid, None)
+                    if start_abs is not None:
+                        rel_start = start_abs - self._recording_start
+                        rel_end   = time.time() - self._recording_start
+                        if rel_start >= 0:
+                            self._talk_log.append({
+                                "clid":      clid,
+                                "name":      self._get_client_name(clid),
+                                "start_sec": round(rel_start, 1),
+                                "end_sec":   round(rel_end, 1),
+                            })
+
         elif "notifyconnectstatuschange" in line and "status=disconnected" in line:
             logger.info("TSClientMonitor: Verbindungsstatus = disconnected.")
             self._fire_kicked()
+
+    def _get_client_name(self, clid: int) -> str:
+        """Gibt den Anzeigenamen für eine Client-ID zurück (gecacht oder per Query)."""
+        if clid in self._clid_names:
+            return self._clid_names[clid]
+        try:
+            resp = _query([f"clientinfo clid={clid}"])
+            if resp:
+                m = re.search(r'\bclient_nickname=(\S+)', resp[0])
+                if m:
+                    name = _ts3_unescape(m.group(1))
+                    self._clid_names[clid] = name
+                    return name
+        except Exception:
+            pass
+        return f"clid{clid}"
+
+    def get_talk_log(self) -> list:
+        """Gibt den Talk-Log zurück; laufende Gespräche werden mit aktuellem Zeitpunkt abgeschlossen."""
+        now = time.time()
+        result = list(self._talk_log)
+        for clid, start_abs in self._current_talkers.items():
+            rel_start = start_abs - self._recording_start
+            rel_end   = now - self._recording_start
+            if rel_start >= 0:
+                result.append({
+                    "clid":      clid,
+                    "name":      self._get_client_name(clid),
+                    "start_sec": round(rel_start, 1),
+                    "end_sec":   round(rel_end, 1),
+                })
+        return sorted(result, key=lambda x: x["start_sec"])
 
     def _fire_kicked(self):
         """Ruft on_kicked genau einmal auf (auch bei mehreren Trigger-Events)."""

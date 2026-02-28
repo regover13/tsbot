@@ -277,9 +277,14 @@ Erreichbar unter `https://tsbot.devprops.de` (Login mit `API_USER` / `API_SECRET
 6. **Kanalwechsel** — über das Dropdown während der Aufnahme möglich. Der Bot wechselt
    den Kanal, Teilnehmer-Tracking wird umgeschaltet. Jeder Kanal bekommt eine eigene
    Teilnehmerliste im Protokoll.
-7. **■ Aufnahme stoppen** → Bot verlässt den Kanal, MP3 wird gespeichert,
-   Transkription + Protokollerstellung laufen im Hintergrund
-8. **Neue Aufnahme während TRANSCRIBING/GENERATING** → möglich. Die laufende Verarbeitung
+7. **■ Aufnahme stoppen** → Bot verlässt den Kanal, MP3 wird gespeichert.
+   Automatische Pipeline: Transkription → **Sprecher-Annotation** → Protokollerstellung
+8. **Sprecher-Annotation** — Der Bot erfasst während der Aufnahme per ClientQuery-Event
+   `notifytalkstatuschange`, wer wann spricht. Nach der Transkription werden die
+   Whisper-Segmente automatisch mit Sprechernamen versehen:
+   `[00:45 - 01:30] Tobias Wäschle: Hier der gesprochene Text`
+   Claude kann damit Aussagen direkt Personen zuordnen (zuverlässiger als Diarization).
+9. **Neue Aufnahme während TRANSCRIBING/GENERATING** → möglich. Die laufende Verarbeitung
    läuft im Hintergrund weiter und schreibt ihr Protokoll in den eigenen Session-Ordner.
    Nur während `RECORDING` ist ein Neustart blockiert (Audio-Hardware belegt).
    Laufende Hintergrund-Pipelines werden im Status-Bereich separat angezeigt

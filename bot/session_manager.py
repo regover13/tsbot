@@ -7,6 +7,8 @@ States:
 """
 
 import os
+import re
+import time
 import json
 import logging
 import asyncio
@@ -137,10 +139,15 @@ class SessionManager:
             logger.warning("ServerQuery nicht verfügbar: %s – Tracker deaktiviert.", e)
             self._tracker = None
 
-        # Audio-Aufnahme starten
+        # Audio-Aufnahme starten (Zeitpunkt als Referenz für Talk-Log)
+        recording_start = time.time()
         audio_path = self.session_dir / "audio.mp3"
         self._audio = AudioCapture(audio_path)
         self._audio.start()
+
+        # recording_start an Monitor weitergeben (nachträglich setzen, da Monitor schon läuft)
+        if self._monitor:
+            self._monitor._recording_start = recording_start
 
         self.state = State.RECORDING
         logger.info("Session %s gestartet – State: RECORDING (Kanal %d)", self.session_id, cid)
@@ -157,6 +164,8 @@ class SessionManager:
         # bevor Monitor/Client getrennt werden
         self.state = State.TRANSCRIBING
 
+        # Talk-Log einsammeln bevor Monitor gestoppt wird
+        talk_log = self._monitor.get_talk_log() if self._monitor else []
         if self._monitor:
             self._monitor.stop()
             self._monitor = None
@@ -206,7 +215,11 @@ class SessionManager:
         (self.session_dir / "participants_by_channel.json").write_text(
             json.dumps(participants_by_channel, ensure_ascii=False, indent=2), encoding="utf-8"
         )
-        logger.info("%d Teilnehmer in %d Kanälen gespeichert.", len(participants), len(participants_by_channel))
+        (self.session_dir / "talk_log.json").write_text(
+            json.dumps(talk_log, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        logger.info("%d Teilnehmer in %d Kanälen, %d Talk-Segmente gespeichert.",
+                    len(participants), len(participants_by_channel), len(talk_log))
 
         # TS3 Client trennen
         if self._ts_client:
@@ -402,6 +415,16 @@ class SessionManager:
                 session_dir,
             )
 
+            # 1b. Sprecher-Annotation (falls Talk-Log vorhanden)
+            talk_log_path = session_dir / "talk_log.json"
+            if talk_log_path.exists():
+                transcript_path = await loop.run_in_executor(
+                    self._executor,
+                    self._annotate_speakers_sync,
+                    transcript_path,
+                    talk_log_path,
+                )
+
             # 2. Protokollerstellung
             logger.info("Starte Protokollerstellung...")
             _set_state(State.GENERATING)
@@ -446,6 +469,42 @@ class SessionManager:
 
         result = transkribiere(str(audio_path), str(session_dir))
         return Path(result)
+
+    def _annotate_speakers_sync(self, transcript_path: Path, talk_log_path: Path) -> Path:
+        """Ergänzt Sprechernamen in Transkript-Segmenten anhand des Talk-Logs."""
+        talk_log = json.loads(talk_log_path.read_text(encoding="utf-8"))
+        if not talk_log:
+            return transcript_path
+
+        def dominant_speaker(start_sec: float, end_sec: float) -> str:
+            overlaps: dict = {}
+            for entry in talk_log:
+                overlap = min(end_sec, entry["end_sec"]) - max(start_sec, entry["start_sec"])
+                if overlap > 0:
+                    # Nur Vorname Nachname (ohne /FRSxxx)
+                    name = entry["name"].split("/")[0].strip()
+                    overlaps[name] = overlaps.get(name, 0) + overlap
+            return max(overlaps, key=overlaps.get) if overlaps else ""
+
+        seg_re = re.compile(r'\[(\d{2}):(\d{2}) - (\d{2}):(\d{2})\] (.+)')
+        lines = transcript_path.read_text(encoding="utf-8").splitlines()
+        new_lines = []
+        for line in lines:
+            m = seg_re.match(line)
+            if m:
+                mm1, ss1, mm2, ss2, text = m.groups()
+                start = int(mm1) * 60 + int(ss1)
+                end   = int(mm2) * 60 + int(ss2)
+                speaker = dominant_speaker(float(start), float(end))
+                new_lines.append(
+                    f"[{mm1}:{ss1} - {mm2}:{ss2}] {speaker}: {text}" if speaker else line
+                )
+            else:
+                new_lines.append(line)
+
+        transcript_path.write_text("\n".join(new_lines), encoding="utf-8")
+        logger.info("Transkript mit Sprechernamen annotiert.")
+        return transcript_path
 
     def _erstelle_protokoll_sync(self, transcript_path: Path, thema: str,
                                   agenda_file: str | None, participants: list,
