@@ -17,6 +17,9 @@ RUN pip install --no-cache-dir --user \
     torch --extra-index-url https://download.pytorch.org/whl/cpu && \
     pip install --no-cache-dir --user -r requirements.txt
 
+# Whisper-Modell vorab herunterladen (wird im Image gecacht → kein Download beim ersten Start)
+RUN python -c "import whisper; whisper.load_model('small')"
+
 # App-Code
 COPY --chown=tsbot:tsbot . .
 
