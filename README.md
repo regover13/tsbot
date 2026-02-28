@@ -1,6 +1,6 @@
 # TSBot – TeamSpeak Aufnahme & Protokoll-Generator
 
-TSBot nimmt TeamSpeak-Sitzungen automatisch auf, transkribiert sie mit Whisper und
+TSBot nimmt TeamSpeak-Sitzungen automatisch auf, transkribiert sie mit faster-whisper und
 erstellt daraus per Claude API ein fertiges Word-Protokoll – inklusive Teilnehmerliste,
 Agenda-Zuordnung, Sprecherzuweisung und Beschlüssen.
 
@@ -10,7 +10,7 @@ Protokolle benötigen, ohne manuell mitschreiben zu müssen.**
 ## Features
 
 - **Automatische Aufnahme** – PulseAudio Null-Sink (Linux) oder VB-Cable (Windows), headless im Hintergrund
-- **Transkription mit faster-whisper** – CPU-optimiert (int8), Modell `medium` als Standard
+- **Transkription mit [faster-whisper](https://github.com/SYSTRAN/faster-whisper)** (Systran) – 3–5× schneller als das OpenAI-Original, CPU-optimiert (int8), Modell `medium` als Standard; Modell-Gewichte stammen von OpenAI (Open Source), kein API-Call
 - **Sprechererkennung** – Der Bot erfasst per TS3 ClientQuery Events (`notifytalkstatuschange`), wer wann spricht.
   Whisper-Segmente werden automatisch mit Sprechernamen annotiert: `[00:45 - 01:30] Max Mustermann: Text`
 - **KI-Protokollerstellung** – Claude ordnet Transkript-Abschnitte automatisch den Agenda-Punkten zu,
@@ -37,7 +37,7 @@ mit einer Ausnahme (siehe unten).
 
 | Daten | Ziel | Hinweis |
 |-------|------|---------|
-| **Audio (.mp3)** | Nirgends – bleibt auf dem Server | Whisper läuft lokal |
+| **Audio (.mp3)** | Nirgends – bleibt auf dem Server | faster-whisper läuft lokal |
 | **Transkript (Text)** | Claude API (Anthropic) | Für die Protokollerstellung |
 | **Screenshots** | Claude API (Anthropic) | Nur im Windows-Modus für Teilnehmererkennung |
 
@@ -439,7 +439,7 @@ Alle Einstellungen in `/opt/tsbot/config/config.env` (Linux) bzw. `config.txt` (
 | `API_USER` | Web-UI Benutzername | `admin` |
 | `API_SECRET` | Web-UI Passwort | `geheim` |
 
-**Whisper-Modelle nach Hardware** (faster-whisper mit int8 auf CPU):
+**faster-whisper-Modelle nach Hardware** (Systran-Implementierung, int8 auf CPU, Modell-Gewichte von OpenAI):
 
 | Modell | Größe | CPU-Zeit/h Audio | Empfehlung |
 |--------|-------|-----------------|------------|
