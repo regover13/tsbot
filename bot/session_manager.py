@@ -123,6 +123,10 @@ class SessionManager:
         self._ts_client = TSClientControl()
         try:
             self._ts_client.connect(cid)
+            # connect() positioniert den Bot bereits im Zielkanal – der Monitor startet
+            # erst danach, sieht also die initiale Positionierung nie. Flag sofort setzen,
+            # damit der erste echte Kanalwechsel korrekt als Event erfasst wird.
+            self._initial_position_done = True
             # Monitor nach dem Verbinden starten
             self._monitor = TSClientMonitor(
                 on_moved=self._on_channel_moved,
