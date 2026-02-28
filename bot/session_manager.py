@@ -332,6 +332,21 @@ class SessionManager:
         if old_id == new_channel_id:
             return  # Kein echter Wechsel (z.B. doppelter Monitor-Callback)
 
+        # Erster Kanalwechsel = initiale Positionierung → Tracker umschalten, kein Event
+        if not self._channel_events:
+            self._current_channel_id = new_channel_id
+            tracker = self._tracker
+            if tracker:
+                try:
+                    await self._loop.run_in_executor(None, tracker.switch_channel, new_channel_id)
+                except Exception as e:
+                    logger.warning("Tracker switch_channel fehlgeschlagen: %s", e)
+            logger.info(
+                "Erster Kanalwechsel %d → %d als initiale Positionierung ignoriert.",
+                old_id, new_channel_id,
+            )
+            return
+
         # Kanal-ID sofort aktualisieren – vor dem ersten await,
         # damit parallele Aufrufe den neuen Wert sehen
         self._current_channel_id = new_channel_id
@@ -481,8 +496,11 @@ class SessionManager:
             for entry in talk_log:
                 overlap = min(end_sec, entry["end_sec"]) - max(start_sec, entry["start_sec"])
                 if overlap > 0:
-                    # Nur Vorname Nachname (ohne /FRSxxx)
-                    name = entry["name"].split("/")[0].strip()
+                    # Vorname Nachname: /FRS-Suffix, Klammer-Inhalte und FRS/MSFS-Tags entfernen
+                    raw = entry["name"].split("/")[0].strip()
+                    raw = re.sub(r'\s*\(.*?\)', '', raw).strip()
+                    raw = re.sub(r'\s+FRS\w+.*$', '', raw).strip()
+                    name = raw
                     overlaps[name] = overlaps.get(name, 0) + overlap
             return max(overlaps, key=overlaps.get) if overlaps else ""
 

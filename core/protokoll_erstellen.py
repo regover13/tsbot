@@ -170,12 +170,12 @@ Format:
 # ── Claude API: Transkript den Agenda-Punkten zuordnen ─────────
 def ki_zuordnung(volltext: str, segmente: list, agenda: list, api_key: str, modell: str,
                  extra_instruktionen: str = None,
-                 kanal_wechsel: list = None) -> list:
+                 kanal_wechsel: list = None) -> tuple:
     try:
         import anthropic
     except ImportError:
         print("HINWEIS: anthropic-Paket nicht installiert.")
-        return []
+        return [], True
 
     print("Sende Transkript an Claude API zur Zuordnung...")
     transkript_text = "\n".join([f"[{s} - {e}] {t}" for s, e, t in segmente]) if segmente else volltext
@@ -210,6 +210,7 @@ TRANSKRIPT:
 {kanal_block}{extra_block}
 Antworte NUR mit folgendem JSON:
 {{
+  "include_transkript": true,
   "agenda_punkte": [
     {{
       "punkt": "Exakter Name des Agenda-Punkts",
@@ -224,7 +225,8 @@ Antworte NUR mit folgendem JSON:
 Hinweise:
 - Jeden Agenda-Punkt aufführen, auch ohne Transkript-Treffer
 - Zusammenfassung sachlich und neutral
-- Beschlüsse = konkrete Entscheidungen oder Aktionspunkte"""
+- Beschlüsse = konkrete Entscheidungen oder Aktionspunkte
+- Setze include_transkript auf false, wenn der Nutzer per Instruktion das Transkript aus dem Protokoll ausschließen möchte"""
 
     client = anthropic.Anthropic(api_key=api_key)
     message = client.messages.create(
@@ -237,10 +239,11 @@ Hinweise:
     json_match = re.search(r'\{.*\}', antwort, re.DOTALL)
     if json_match:
         try:
-            return json.loads(json_match.group())["agenda_punkte"]
+            data = json.loads(json_match.group())
+            return data.get("agenda_punkte", []), bool(data.get("include_transkript", True))
         except (json.JSONDecodeError, KeyError):
             pass
-    return []
+    return [], True
 
 
 # ── Word-Dokument erstellen ───────────────────────────────────
@@ -287,8 +290,9 @@ def erstelle_protokoll(transkript_pfad: str, thema: str,
 
     # KI-Zuordnung Transkript → Agenda
     ki_punkte = []
+    include_transkript = True
     if agenda and hat_api:
-        ki_punkte = ki_zuordnung(
+        ki_punkte, include_transkript = ki_zuordnung(
             volltext, segmente, agenda, api_key, modell,
             extra_instruktionen=extra_instruktionen,
             kanal_wechsel=kanal_wechsel or [],
@@ -431,7 +435,7 @@ def erstelle_protokoll(transkript_pfad: str, thema: str,
                 for b in eintrag["beschluesse"]:
                     doc.add_paragraph(b, style='List Bullet')
 
-            if eintrag.get("segmente"):
+            if eintrag.get("segmente") and include_transkript:
                 doc.add_paragraph().add_run("Transkript-Auszüge:").bold = True
                 _seg_re = re.compile(r'^(\[\d{2}:\d{2}(?:\s*-\s*\d{2}:\d{2})?\])\s*(.*)', re.DOTALL)
                 for seg in eintrag["segmente"]:
@@ -460,17 +464,18 @@ def erstelle_protokoll(transkript_pfad: str, thema: str,
             doc.add_paragraph().add_run("_" * 70)
 
     # ── Vollständiges Transkript ───────────────────────────────
-    doc.add_heading('Vollständiges Transkript', level=1)
-    if segmente:
-        for start, ende, text in segmente:
-            p = doc.add_paragraph()
-            r = p.add_run(f"[{start}]  ")
-            r.bold = True
-            r.font.color.rgb = RGBColor(0x70, 0x70, 0x70)
-            r.font.size = Pt(9)
-            p.add_run(text)
-    else:
-        doc.add_paragraph(volltext).style.font.size = Pt(10)
+    if include_transkript:
+        doc.add_heading('Vollständiges Transkript', level=1)
+        if segmente:
+            for start, ende, text in segmente:
+                p = doc.add_paragraph()
+                r = p.add_run(f"[{start}]  ")
+                r.bold = True
+                r.font.color.rgb = RGBColor(0x70, 0x70, 0x70)
+                r.font.size = Pt(9)
+                p.add_run(text)
+        else:
+            doc.add_paragraph(volltext).style.font.size = Pt(10)
 
     doc.save(ausgabe_datei)
     print(f"\nProtokoll gespeichert: {ausgabe_datei}")
