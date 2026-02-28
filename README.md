@@ -279,6 +279,9 @@ Erreichbar unter `https://tsbot.devprops.de` (Login mit `API_USER` / `API_SECRET
    Teilnehmerliste im Protokoll.
 7. **■ Aufnahme stoppen** → Bot verlässt den Kanal, MP3 wird gespeichert,
    Transkription + Protokollerstellung laufen im Hintergrund
+8. **Neue Aufnahme während TRANSCRIBING/GENERATING** → möglich. Die laufende Verarbeitung
+   läuft im Hintergrund weiter und schreibt ihr Protokoll in den eigenen Session-Ordner.
+   Nur während `RECORDING` ist ein Neustart blockiert (Audio-Hardware belegt).
 
 Der Status-Badge zeigt den Fortschritt:
 `IDLE` → `RECORDING` → `TRANSCRIBING` → `GENERATING` → `DONE`
@@ -307,7 +310,7 @@ Liste aller abgeschlossenen Sitzungen mit Download-Links für:
 ```
 /opt/tsbot/  (Linux-Server) bzw. tsbot/ (Windows-Repo)
 ├── core/
-│   ├── transkribieren.py        Whisper-Transkription (plain + whisperx)
+│   ├── transkribieren.py        Whisper-Transkription
 │   └── protokoll_erstellen.py  Protokoll-Generator (Claude API)
 ├── bot/
 │   ├── ts_query.py             TS3 ServerQuery Teilnehmer-Tracking
