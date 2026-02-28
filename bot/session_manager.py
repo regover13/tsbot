@@ -211,6 +211,10 @@ class SessionManager:
                 logger.warning("TS3 Client-Trennung fehlgeschlagen: %s", e)
             self._ts_client = None
 
+        # Pipeline sofort im Tracking-Dict registrieren, damit sie auch dann sichtbar bleibt,
+        # wenn eine neue Session gestartet wird bevor _set_state(GENERATING) greift.
+        self._background_pipelines[self.session_id] = State.TRANSCRIBING
+
         # Verarbeitung im Hintergrund (Snapshot übergeben, damit _reset() die Pipeline nicht korrumpiert)
         asyncio.create_task(self._verarbeitungs_pipeline(
             audio_path, participants,
@@ -256,6 +260,7 @@ class SessionManager:
             {"session_id": sid, "state": str(state)}
             for sid, state in self._background_pipelines.items()
             if state not in (State.DONE, State.ERROR)
+            and sid != self.session_id  # aktuelle Session nicht doppelt anzeigen
         ]
 
         return {
@@ -313,16 +318,18 @@ class SessionManager:
         # damit parallele Aufrufe den neuen Wert sehen
         self._current_channel_id = new_channel_id
 
-        # Kanalnamen auflösen
+        # Kanalnamen auflösen (tracker lokal capturen – stop_session() kann self._tracker
+        # zwischen dem if-Check und dem await auf None setzen)
         old_name = str(old_id)
         new_name = str(new_channel_id)
-        if self._tracker:
+        tracker = self._tracker
+        if tracker:
             try:
                 old_name = await self._loop.run_in_executor(
-                    None, self._tracker.get_channel_name, old_id
+                    None, tracker.get_channel_name, old_id
                 )
                 new_name = await self._loop.run_in_executor(
-                    None, self._tracker.get_channel_name, new_channel_id
+                    None, tracker.get_channel_name, new_channel_id
                 )
             except Exception as e:
                 logger.warning("Kanalnamen konnten nicht aufgelöst werden: %s", e)
@@ -348,11 +355,11 @@ class SessionManager:
             except Exception as e:
                 logger.warning("meta.json Kanalwechsel-Update fehlgeschlagen: %s", e)
 
-        # Tracker auf neuen Kanal umschalten (in Thread-Pool, da Netzwerk-I/O)
-        if self._tracker:
+        # Tracker auf neuen Kanal umschalten (tracker lokal capturen – Race Condition mit stop_session)
+        if tracker:
             try:
                 await self._loop.run_in_executor(
-                    None, self._tracker.switch_channel, new_channel_id
+                    None, tracker.switch_channel, new_channel_id
                 )
             except Exception as e:
                 logger.warning("Tracker switch_channel fehlgeschlagen: %s", e)
@@ -372,11 +379,11 @@ class SessionManager:
         loop = asyncio.get_running_loop()
 
         def _set_state(new_state: State):
-            """Schreibt den State: in aktuelle Session oder in Hintergrund-Dict."""
+            """Schreibt den State in _background_pipelines (immer) und
+            zusätzlich in self.state wenn diese Pipeline noch die aktuelle ist."""
+            self._background_pipelines[session_id] = new_state
             if self.session_id == session_id:
                 self.state = new_state
-            else:
-                self._background_pipelines[session_id] = new_state
 
         try:
             # 1. Transkription (CPU-intensiv → ThreadPoolExecutor)

@@ -112,6 +112,8 @@ class TSQueryTracker:
 
     def get_channel_name(self, channel_id: int) -> str:
         """Gibt den Kanalnamen für eine gegebene Kanal-ID zurück."""
+        if not self._running or not self._conn:
+            return str(channel_id)
         try:
             resp = self._conn.channellist()
             for c in resp.parsed:
