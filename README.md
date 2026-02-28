@@ -259,7 +259,25 @@ systemctl stop tsbot-api
 systemctl disable tsbot-api
 ```
 
-**2. Portainer: GHCR-Registry konfigurieren**
+**2. Portainer mit Config-Mount starten**
+
+Portainer muss `/opt/tsbot/config` eingebunden haben, damit es `env_file` lesen kann:
+
+```bash
+docker run -d \
+  --name portainer \
+  --restart=always \
+  -p 8000:8000 \
+  -p 9443:9443 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v portainer_data:/data \
+  -v /opt/tsbot/config:/opt/tsbot/config \
+  portainer/portainer-ce:latest
+```
+
+> Falls Portainer bereits läuft: `docker stop portainer && docker rm portainer` – dann obigen Befehl ausführen.
+
+**3. Portainer: GHCR-Registry konfigurieren**
 
 Portainer → Registries → Add registry → Custom registry:
 
@@ -281,17 +299,7 @@ Stacks → Add stack → Repository:
 | Reference | `refs/heads/master` |
 | Authentication | ✅ Username + GitHub PAT (Scope: `repo`) |
 
-Unter **Environment variables → Advanced mode** den Inhalt der `config.env` einfügen
-(Kommentarzeilen weglassen, nur `KEY=VALUE`-Zeilen). Zusätzlich:
-```
-XDG_RUNTIME_DIR=/run/user/1000
-PULSE_SERVER=unix:/run/user/1000/pulse/native
-```
-
 → **Deploy the stack** → Webhook-URL aus Portainer kopieren
-
-> **Hinweis:** `env_file` wird nicht verwendet, da Portainer als Docker-Container läuft
-> und Host-Pfade nicht direkt lesen kann. Env-Variablen werden im Portainer-Stack-UI verwaltet.
 
 **4. Webhook-URL als GitHub Secret speichern**
 
