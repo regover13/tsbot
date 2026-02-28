@@ -469,11 +469,15 @@ apt install wireguard
 
 Sitzungsdaten (Audio, Transkripte, Protokolle) werden täglich automatisch nach OneDrive gesichert.
 Verwendet wird **rclone** mit `sync` – OneDrive spiegelt immer den aktuellen Server-Stand.
-Gelöschte Sessions verschwinden beim nächsten Backup auch aus OneDrive (kein Versions-Wildwuchs).
+Gelöschte Sessions verschwinden beim nächsten Backup auch aus OneDrive.
+
+Das Backup-Skript und die systemd-Unit-Dateien liegen im separaten Repository
+[**server-backup**](https://github.com/DEIN_USER/server-backup).
+Dort findet sich auch die vollständige Einrichtungsanleitung (rclone, OneDrive-Auth, Timer-Aktivierung).
 
 **Gesicherter Inhalt:**
 ```
-OneDrive/TSBot-Backup/
+OneDrive:/Server-Backup/
 ├── agenda.txt
 └── sessions/
     └── YYYYMMDD_HHMMSS/
@@ -483,41 +487,15 @@ OneDrive/TSBot-Backup/
         └── meta.json
 ```
 
-### Einmalige Einrichtung
+### Manuell ausführen / Log prüfen
 
 ```bash
-# 1. rclone installieren
-curl https://rclone.org/install.sh | sudo bash
+# Backup manuell starten:
+systemctl start onedrive-backup.service
 
-# 2. OneDrive-Verbindung einrichten (headless via SSH-Tunnel)
-# Auf dem lokalen Rechner: SSH-Tunnel öffnen
-ssh -L 53682:localhost:53682 tsbot
-
-# Auf dem Server: rclone config starten
-rclone config
-# → New remote → Name: onedrive → Type: onedrive
-# → client_id/secret: leer lassen
-# → Use auto config: y  (Browser öffnet sich über den Tunnel)
-# → Drive: "OneDrive (personal)" wählen → bestätigen
-```
-
-### Cronjob
-
-Läuft täglich um 02:00 Uhr als Systemcron:
-
-```
-# /etc/cron.d/tsbot-backup
-0 2 * * * tsbot /opt/tsbot/scripts/backup_onedrive.sh >> /opt/tsbot/logs/backup.log 2>&1
-```
-
-### Manuell ausführen
-
-```bash
-/opt/tsbot/scripts/backup_onedrive.sh
-
-# Ergebnis prüfen:
-rclone lsd onedrive:/TSBot-Backup/
-cat /opt/tsbot/logs/backup.log | tail -20
+# Log einsehen:
+tail -20 /opt/backup/logs/backup.log
+journalctl -u onedrive-backup -f
 ```
 
 ---

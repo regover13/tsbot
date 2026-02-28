@@ -73,7 +73,7 @@ class SessionManager:
         Raises:
             RuntimeError wenn bereits eine Sitzung läuft
         """
-        if self.state not in (State.IDLE, State.DONE, State.ERROR):
+        if self.state == State.RECORDING:
             raise RuntimeError(f"Sitzung läuft bereits (State: {self.state})")
         self._reset()
 
@@ -207,8 +207,12 @@ class SessionManager:
                 logger.warning("TS3 Client-Trennung fehlgeschlagen: %s", e)
             self._ts_client = None
 
-        # Verarbeitung im Hintergrund
-        asyncio.create_task(self._verarbeitungs_pipeline(audio_path, participants))
+        # Verarbeitung im Hintergrund (Snapshot übergeben, damit _reset() die Pipeline nicht korrumpiert)
+        asyncio.create_task(self._verarbeitungs_pipeline(
+            audio_path, participants,
+            session_id=self.session_id,
+            session_dir=self.session_dir,
+        ))
 
     async def switch_channel(self, new_channel_id: int) -> None:
         """
@@ -346,31 +350,41 @@ class SessionManager:
 
     # ── Interne Pipeline ──────────────────────────────────────
 
-    async def _verarbeitungs_pipeline(self, audio_path: Path, participants: list):
-        """Transkription → Protokollerstellung (läuft als asyncio Task)."""
+    async def _verarbeitungs_pipeline(self, audio_path: Path, participants: list,
+                                       *, session_id: str, session_dir: Path):
+        """Transkription → Protokollerstellung (läuft als asyncio Task).
+
+        session_id / session_dir werden als Snapshot übergeben, damit ein
+        zwischenzeitlicher _reset() (neue Session) die laufende Pipeline nicht korrumpiert.
+        State-Updates werden nur geschrieben, wenn die Pipeline noch zur aktuellen Session gehört.
+        """
         loop = asyncio.get_running_loop()
 
         try:
             # 1. Transkription (CPU-intensiv → ThreadPoolExecutor)
             logger.info("Starte Transkription...")
-            self.state = State.TRANSCRIBING
+            if self.session_id == session_id:
+                self.state = State.TRANSCRIBING
+
             transcript_path = await loop.run_in_executor(
                 self._executor,
                 self._transkribiere_sync,
                 audio_path,
+                session_dir,
             )
 
             # 2. Protokollerstellung
             logger.info("Starte Protokollerstellung...")
-            self.state = State.GENERATING
+            if self.session_id == session_id:
+                self.state = State.GENERATING
 
-            meta_raw = (self.session_dir / "meta.json").read_text(encoding="utf-8")
+            meta_raw = (session_dir / "meta.json").read_text(encoding="utf-8")
             meta = json.loads(meta_raw)
             agenda_file    = meta.get("agenda_file")
             channel_events = meta.get("channel_events", [])
 
             # participants_by_channel aus Datei laden (wurde von stop_session gespeichert)
-            pbc_path = self.session_dir / "participants_by_channel.json"
+            pbc_path = session_dir / "participants_by_channel.json"
             participants_by_channel = {}
             if pbc_path.exists():
                 participants_by_channel = json.loads(pbc_path.read_text(encoding="utf-8"))
@@ -387,21 +401,23 @@ class SessionManager:
                 participants_by_channel,
             )
 
-            self.state = State.DONE
-            logger.info("Session %s abgeschlossen.", self.session_id)
+            if self.session_id == session_id:
+                self.state = State.DONE
+            logger.info("Session %s abgeschlossen.", session_id)
 
         except Exception as e:
             logger.exception("Fehler in der Verarbeitungs-Pipeline:")
-            self.error_msg = str(e)
-            self.state = State.ERROR
+            if self.session_id == session_id:
+                self.error_msg = str(e)
+                self.state = State.ERROR
 
-    def _transkribiere_sync(self, audio_path: Path) -> Path:
+    def _transkribiere_sync(self, audio_path: Path, session_dir: Path) -> Path:
         """Synchroner Whisper-Aufruf (läuft im ThreadPoolExecutor)."""
         import sys
         sys.path.insert(0, str(Path(__file__).parent.parent / "core"))
         from transkribieren import transkribiere
 
-        result = transkribiere(str(audio_path), str(self.session_dir))
+        result = transkribiere(str(audio_path), str(session_dir))
         return Path(result)
 
     def _erstelle_protokoll_sync(self, transcript_path: Path, thema: str,
