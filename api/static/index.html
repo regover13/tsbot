@@ -558,7 +558,7 @@ function applyStatus(s) {
     errLine.style.display = 'none';
   }
 
-  const isIdle = ['IDLE','DONE','ERROR'].includes(s.state);
+  const isIdle = ['IDLE','DONE','ERROR','TRANSCRIBING','GENERATING'].includes(s.state);
   document.getElementById('btn-start').disabled = !isIdle;
   document.getElementById('btn-stop').disabled  = !isRec;
 

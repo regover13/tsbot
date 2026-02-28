@@ -190,6 +190,7 @@ class SessionManager:
                     unique.append(p)
             participants = unique
             self._tracker.stop()
+            self._tracker = None
 
         (self.session_dir / "participants.json").write_text(
             json.dumps(participants, ensure_ascii=False, indent=2), encoding="utf-8"
