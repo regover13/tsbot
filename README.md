@@ -392,7 +392,7 @@ Erreichbar unter `https://tsbot.devprops.de` (Login mit `API_USER` / `API_SECRET
 9. **Sprecher-Annotation** — Der Bot erfasst während der Aufnahme per ClientQuery-Event
    `notifytalkstatuschange`, wer wann spricht. Nach der Transkription werden die
    Whisper-Segmente automatisch mit Sprechernamen versehen:
-   `[00:45 - 01:30] Tobias Wäschle: Hier der gesprochene Text`
+   `[00:45 - 01:30] Max Mustermann: Hier der gesprochene Text`
    Claude kann damit Aussagen direkt Personen zuordnen (zuverlässiger als Diarization).
 9. **Neue Aufnahme während TRANSCRIBING/GENERATING** → möglich. Die laufende Verarbeitung
    läuft im Hintergrund weiter und schreibt ihr Protokoll in den eigenen Session-Ordner.
