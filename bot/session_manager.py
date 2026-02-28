@@ -180,7 +180,12 @@ class SessionManager:
 
             raw = self._tracker.get_participants_by_channel()
             for ch_id, parts in raw.items():
-                ch_name = channel_names.get(ch_id, str(ch_id))
+                if ch_id in channel_names:
+                    ch_name = channel_names[ch_id]
+                else:
+                    # Kanal hatte keinen aufgezeichneten Event → Name direkt abfragen
+                    ch_name = self._tracker.get_channel_name(ch_id)
+                    channel_names[ch_id] = ch_name
                 participants_by_channel[ch_name] = parts
                 participants.extend(parts)
             # Deduplizieren (gleiche Person in mehreren Kanälen)

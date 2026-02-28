@@ -351,7 +351,6 @@ def erstelle_protokoll(transkript_pfad: str, thema: str,
             nach = evt.get("to_channel_name")   or f"Kanal {evt.get('to_channel', '?')}"
             item = doc.add_paragraph(style="List Bullet")
             item.add_run(f"{ts}: {von} → {nach}")
-            item.add_run(" – Teilnehmer-Tracking wurde umgeschaltet.").italic = True
         doc.add_paragraph()
 
     # ── Inhaltsverzeichnis ─────────────────────────────────────
