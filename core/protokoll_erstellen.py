@@ -237,10 +237,10 @@ Keine Teilnehmerliste verfügbar – behalte SPRECHER_X in Zusammenfassungen bei
     if kanal_wechsel:
         kanal_block = "\nKANALWECHSEL WÄHREND DER SITZUNG:\n"
         for evt in kanal_wechsel:
-            ts      = evt.get("timestamp", "")[:19].replace("T", " ")
-            von     = evt.get("from_channel", "?")
-            nach    = evt.get("to_channel", "?")
-            kanal_block += f"- {ts}: Kanal {von} → Kanal {nach}\n"
+            ts   = evt.get("timestamp", "")[:19].replace("T", " ")
+            von  = evt.get("from_channel_name") or f"Kanal {evt.get('from_channel', '?')}"
+            nach = evt.get("to_channel_name")   or f"Kanal {evt.get('to_channel', '?')}"
+            kanal_block += f"- {ts}: {von} → {nach}\n"
         kanal_block += (
             "Erwähne diese Kanalwechsel an passender Stelle im Protokoll "
             "(z.B. als Notiz zwischen den Agenda-Punkten).\n"
@@ -280,7 +280,7 @@ Hinweise:
     client = anthropic.Anthropic(api_key=api_key)
     message = client.messages.create(
         model=modell,
-        max_tokens=4096,
+        max_tokens=8192,
         messages=[{"role": "user", "content": prompt}]
     )
 
@@ -356,6 +356,18 @@ def erstelle_protokoll(transkript_pfad: str, thema: str,
     zeitstempel    = datetime.now().strftime("%Y%m%d_%H%M")
     ausgabe_datei  = os.path.join(ausgabe_ordner, f"Protokoll_{zeitstempel}.docx")
 
+    # Sitzungsdatum aus meta.json (Fallback: heute)
+    sitzungs_datum = datetime.now()
+    meta_path = os.path.join(ausgabe_ordner, "meta.json")
+    if os.path.exists(meta_path):
+        try:
+            with open(meta_path, encoding="utf-8") as f:
+                _meta = json.load(f)
+            if _meta.get("started_at"):
+                sitzungs_datum = datetime.fromisoformat(_meta["started_at"])
+        except Exception:
+            pass
+
     doc = Document()
     setze_seitenraender(doc)
     doc.styles['Normal'].font.name = 'Calibri'
@@ -374,7 +386,7 @@ def erstelle_protokoll(transkript_pfad: str, thema: str,
     t = doc.add_table(rows=2, cols=2)
     t.style = 'Table Grid'
     for i, (label, wert) in enumerate([
-        ("Datum:",       datetime.now().strftime("%d.%m.%Y")),
+        ("Datum:",       sitzungs_datum.strftime("%d.%m.%Y")),
         ("Erstellt am:", datetime.now().strftime("%d.%m.%Y %H:%M Uhr")),
     ]):
         t.cell(i, 0).text = label
@@ -475,14 +487,18 @@ def erstelle_protokoll(transkript_pfad: str, thema: str,
 
             if eintrag.get("segmente"):
                 doc.add_paragraph().add_run("Transkript-Auszüge:").bold = True
+                _seg_re = re.compile(r'^(\[\d{2}:\d{2}(?:\s*-\s*\d{2}:\d{2})?\])\s*(.*)', re.DOTALL)
                 for seg in eintrag["segmente"]:
                     p = doc.add_paragraph()
                     p.paragraph_format.left_indent = Cm(1)
-                    r_t = p.add_run(seg[:15] + "  ")
+                    m = _seg_re.match(seg)
+                    ts_teil   = m.group(1) if m else ""
+                    text_teil = m.group(2) if m else seg
+                    r_t = p.add_run(ts_teil + "  ")
                     r_t.bold = True
                     r_t.font.size = Pt(9)
                     r_t.font.color.rgb = RGBColor(0x70, 0x70, 0x70)
-                    p.add_run(seg[15:] if len(seg) > 15 else "")
+                    p.add_run(text_teil)
 
             doc.add_paragraph()
 
