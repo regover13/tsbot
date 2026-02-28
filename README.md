@@ -1,6 +1,69 @@
 # TSBot – TeamSpeak Aufnahme & Protokoll-Generator
 
-Automatische Transkription und Protokollerstellung von TeamSpeak-Sitzungen.
+TSBot nimmt TeamSpeak-Sitzungen automatisch auf, transkribiert sie mit Whisper und
+erstellt daraus per Claude API ein fertiges Word-Protokoll – inklusive Teilnehmerliste,
+Agenda-Zuordnung, Sprecherzuweisung und Beschlüssen.
+
+**Entwickelt für Communities, die regelmäßige TeamSpeak-Meetings abhalten und professionelle
+Protokolle benötigen, ohne manuell mitschreiben zu müssen.**
+
+## Features
+
+- **Automatische Aufnahme** – PulseAudio Null-Sink (Linux) oder VB-Cable (Windows), headless im Hintergrund
+- **Transkription mit faster-whisper** – CPU-optimiert (int8), Modell `medium` als Standard
+- **Sprechererkennung** – Der Bot erfasst per TS3 ClientQuery Events (`notifytalkstatuschange`), wer wann spricht.
+  Whisper-Segmente werden automatisch mit Sprechernamen annotiert: `[00:45 - 01:30] Max Mustermann: Text`
+- **KI-Protokollerstellung** – Claude ordnet Transkript-Abschnitte automatisch den Agenda-Punkten zu,
+  schreibt Zusammenfassungen, erkennt Beschlüsse und gibt strukturierte Aufzählungen (Events, Termine,
+  Programmpunkte) als Bullet-Liste aus
+- **Teilnehmer-Tracking** – Automatisch per TS3 ServerQuery; pro Kanal separate Teilnehmerliste im Protokoll
+- **Kanalwechsel** – Bot folgt dem Moderator in andere Kanäle, Kanalwechsel werden im Protokoll vermerkt
+- **Zusätzliche Instruktionen** – Freier Text direkt an Claude, z.B. *„Keine Transkript-Auszüge"* oder
+  *„ICAO-Codes ausschreiben"*
+- **Web-Interface** – FastAPI-Dashboard zum Starten/Stoppen, Kanalauswahl, Agenda-Verwaltung, Protokoll-Download
+- **Docker + CI/CD** – Automatisches Deployment via GitHub Actions + Portainer bei jedem Push auf `master`
+- **Word-Protokoll (.docx)** – Mit Inhaltsverzeichnis, Metadaten, Teilnehmertabelle, Zeitangaben und
+  optionalem Volltranskript
+
+## Datenschutz & Datensicherheit
+
+### Wo bleiben die Daten?
+
+Alle Aufnahmen, Transkripte und Protokolle liegen ausschließlich auf **deinem eigenen Server**
+unter `/opt/tsbot/data/sessions/`. Es gibt keine automatische Weitergabe an Dritte –
+mit einer Ausnahme (siehe unten).
+
+### Was wird extern gesendet?
+
+| Daten | Ziel | Hinweis |
+|-------|------|---------|
+| **Audio (.mp3)** | Nirgends – bleibt auf dem Server | Whisper läuft lokal |
+| **Transkript (Text)** | Claude API (Anthropic) | Für die Protokollerstellung |
+| **Screenshots** | Claude API (Anthropic) | Nur im Windows-Modus für Teilnehmererkennung |
+
+Das Transkript (reiner Text, kein Audio) wird zur Protokollerstellung an die **Anthropic Claude API**
+gesendet. Anthropic verarbeitet API-Anfragen gemäß ihrer
+[Datenschutzrichtlinie](https://www.anthropic.com/privacy) und nutzt API-Daten nicht für das
+Training ihrer Modelle. Für API-Kunden steht ein
+[Data Processing Addendum (DPA)](https://www.anthropic.com/legal/data-processing-addendum)
+mit Standard Contractual Clauses (SCCs) bereit – die rechtliche Grundlage für DSGVO-konforme
+Übertragung in die USA. Eine EU-Datenhaltung bietet Anthropic standardmäßig nicht an.
+
+### Zugriffssicherheit
+
+- Web-Interface ist per **HTTP Basic Auth** geschützt
+- Produktionsbetrieb läuft ausschließlich über **HTTPS** (Let's Encrypt)
+- Server-Zugang nur per **SSH-Key** (kein Passwort-Login)
+- `config.env` mit allen Secrets ist in `.gitignore` und wird nie ins Repository committet
+
+### Rechtlicher Hinweis
+
+Das Aufnehmen von Gesprächen ohne Einwilligung der Teilnehmer kann in vielen Ländern
+(z.B. Deutschland, §201 StGB) strafbar sein.
+**Informiere alle Teilnehmer vor Beginn der Aufnahme.**
+
+---
+
 Zwei Betriebsmodi:
 
 | Modus | Aufnahme | Teilnehmer | Steuerung |
@@ -12,15 +75,17 @@ Zwei Betriebsmodi:
 
 ## Inhaltsverzeichnis
 
-1. [Windows-Setup (lokal)](#1-windows-setup-lokal)
-2. [Linux-Server-Setup (Bot)](#2-linux-server-setup-bot)
-3. [Docker-Deployment & CI/CD](#3-docker-deployment--cicd)
-4. [Konfiguration](#4-konfiguration)
-5. [Web-Interface bedienen](#5-web-interface-bedienen)
-6. [Projektstruktur](#6-projektstruktur)
-7. [Zugriff und Sicherheit](#7-zugriff-und-sicherheit)
-8. [Backup nach OneDrive](#8-backup-nach-onedrive)
-9. [Troubleshooting](#9-troubleshooting)
+1. [Features](#features)
+2. [Datenschutz & Datensicherheit](#datenschutz--datensicherheit)
+3. [Windows-Setup (lokal)](#3-windows-setup-lokal)
+4. [Linux-Server-Setup (Bot)](#4-linux-server-setup-bot)
+5. [Docker-Deployment & CI/CD](#5-docker-deployment--cicd)
+6. [Konfiguration](#6-konfiguration)
+7. [Web-Interface bedienen](#7-web-interface-bedienen)
+8. [Projektstruktur](#8-projektstruktur)
+9. [Zugriff und Sicherheit](#9-zugriff-und-sicherheit)
+10. [Backup nach OneDrive](#10-backup-nach-onedrive)
+11. [Troubleshooting](#11-troubleshooting)
 
 ---
 
