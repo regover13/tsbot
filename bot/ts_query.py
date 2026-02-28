@@ -177,7 +177,11 @@ class TSQueryTracker:
     def _handle_join(self, nickname: str):
         """Fügt einen Teilnehmer zur akkumulierten Liste hinzu."""
         bot_nick = os.environ.get("TS_NICKNAME", "FriesenFliegerBot")
-        if nickname.strip() == bot_nick:
+        nick_clean = nickname.strip()
+        # Parsing-Artefakte herausfiltern (enthalten '=' oder 'clid=')
+        if not nick_clean or '=' in nick_clean:
+            return
+        if nick_clean == bot_nick or nick_clean.startswith(bot_nick):
             return
         parsed = self._parse_nickname(nickname)
         if not parsed["name"]:

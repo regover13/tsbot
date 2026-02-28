@@ -57,9 +57,10 @@ class SessionManager:
         self._executor = ThreadPoolExecutor(max_workers=1)
 
         # Kanalwechsel-Tracking
-        self._current_channel_id: int  = 0
-        self._channel_events:    list  = []
-        self._kicked_triggered:  bool  = False
+        self._current_channel_id:   int  = 0
+        self._channel_events:       list = []
+        self._kicked_triggered:     bool = False
+        self._initial_position_done: bool = False  # True nach erstem (ignorierten) Kanalwechsel
         self._loop: asyncio.AbstractEventLoop | None = None
 
         # Hintergrund-Pipelines (session_id → State), die parallel laufen
@@ -332,8 +333,10 @@ class SessionManager:
         if old_id == new_channel_id:
             return  # Kein echter Wechsel (z.B. doppelter Monitor-Callback)
 
-        # Erster Kanalwechsel = initiale Positionierung → Tracker umschalten, kein Event
-        if not self._channel_events:
+        # Erster Kanalwechsel = initiale Positionierung (Bot landet in Zielkanal nach connect)
+        # → Tracker umschalten, aber kein Channel-Event schreiben
+        if not self._initial_position_done:
+            self._initial_position_done = True
             self._current_channel_id = new_channel_id
             tracker = self._tracker
             if tracker:
