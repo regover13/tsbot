@@ -257,6 +257,10 @@
           <label>Aktueller Kanal</label><span id="m-channel">—</span>
         </div>
       </div>
+      <div id="bg-pipelines" style="display:none; margin-top:0.6rem;">
+        <label style="color:var(--muted);font-size:0.8rem;display:block;margin-bottom:0.3rem;">Hintergrund-Verarbeitung</label>
+        <div id="bg-pipelines-list"></div>
+      </div>
       <p id="error-line" class="error-line"></p>
     </div>
 
@@ -290,7 +294,8 @@
       <div class="field">
         <label>Zusätzliche Instruktionen für die Protokollerstellung</label>
         <textarea id="f-extra" rows="3"
-          placeholder="z.B.: Schreibe Beschlüsse besonders hervor. Ignoriere Small Talk. Verwende förmliche Sprache."></textarea>
+          placeholder="z.B.: Schreibe Beschlüsse besonders hervor. Ignoriere Small Talk. Verwende förmliche Sprache."
+          oninput="saveExtra()"></textarea>
         <p class="hint">Optionaler Freitext – wird direkt an Claude angehängt.</p>
       </div>
 
@@ -349,6 +354,7 @@
 
 <script>
 const LAST_CHANNEL_KEY = 'tsbot_last_channel_id';
+const EXTRA_KEY        = 'tsbot_extra_instruktionen';
 let _channelNames = {};   // id → name, befüllt von loadChannels()
 let _currentState = 'IDLE';
 
@@ -431,6 +437,15 @@ async function loadChannels() {
 function saveLastChannel() {
   const sel = document.getElementById('f-channel');
   if (sel.value) localStorage.setItem(LAST_CHANNEL_KEY, sel.value);
+}
+
+function saveExtra() {
+  const val = document.getElementById('f-extra').value;
+  if (val) {
+    localStorage.setItem(EXTRA_KEY, val);
+  } else {
+    localStorage.removeItem(EXTRA_KEY);
+  }
 }
 
 function onChannelChange() {
@@ -548,6 +563,20 @@ function applyStatus(s) {
     hint.textContent = 'Kanal wechseln: Dropdown ändern → Bot wechselt sofort den Kanal.';
   } else {
     hint.textContent = 'Der Bot tritt diesem Kanal bei, wenn die Aufnahme startet.';
+  }
+
+  // Hintergrund-Pipelines (laufende Transkription/Generierung alter Sessions)
+  const bgDiv  = document.getElementById('bg-pipelines');
+  const bgList = document.getElementById('bg-pipelines-list');
+  const bgs    = (s.background_pipelines || []);
+  if (bgs.length > 0) {
+    bgList.innerHTML = bgs.map(p =>
+      `<span class="badge s-${p.state}" style="margin-right:0.4rem;font-size:0.75rem;">${p.state}</span>` +
+      `<span style="font-size:0.8rem;color:var(--muted);">${p.session_id}</span>`
+    ).join('<br>');
+    bgDiv.style.display = 'block';
+  } else {
+    bgDiv.style.display = 'none';
   }
 
   const errLine = document.getElementById('error-line');
@@ -762,6 +791,9 @@ function escHtml(s) {
   startPoll();
   loadProtocols();
   loadChannels();
+  // Gespeicherte Instruktionen wiederherstellen
+  const savedExtra = localStorage.getItem(EXTRA_KEY);
+  if (savedExtra) document.getElementById('f-extra').value = savedExtra;
 })();
 </script>
 </body>

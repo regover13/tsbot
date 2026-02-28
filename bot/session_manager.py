@@ -60,6 +60,9 @@ class SessionManager:
         self._kicked_triggered:  bool  = False
         self._loop: asyncio.AbstractEventLoop | None = None
 
+        # Hintergrund-Pipelines (session_id → State), die parallel laufen
+        self._background_pipelines: dict[str, State] = {}
+
     # ── Öffentliche API ───────────────────────────────────────
 
     async def start_session(self, thema: str, agenda: list | None = None,
@@ -249,16 +252,23 @@ class SessionManager:
         if self._tracker:
             participant_count = len(self._tracker.get_participant_list())
 
+        background = [
+            {"session_id": sid, "state": str(state)}
+            for sid, state in self._background_pipelines.items()
+            if state not in (State.DONE, State.ERROR)
+        ]
+
         return {
-            "state":              self.state,
-            "session_id":         self.session_id,
-            "thema":              self.thema,
-            "started_at":         self.started_at.isoformat() if self.started_at else None,
-            "duration_seconds":   duration_sec,
-            "participant_count":  participant_count,
-            "current_channel_id": self._current_channel_id if self.state == State.RECORDING else 0,
-            "channel_events":     list(self._channel_events),
-            "error":              self.error_msg,
+            "state":                self.state,
+            "session_id":           self.session_id,
+            "thema":                self.thema,
+            "started_at":           self.started_at.isoformat() if self.started_at else None,
+            "duration_seconds":     duration_sec,
+            "participant_count":    participant_count,
+            "current_channel_id":   self._current_channel_id if self.state == State.RECORDING else 0,
+            "channel_events":       list(self._channel_events),
+            "error":                self.error_msg,
+            "background_pipelines": background,
         }
 
     # ── Kick / Move Callbacks (aus Monitor-Thread) ─────────────
@@ -361,11 +371,17 @@ class SessionManager:
         """
         loop = asyncio.get_running_loop()
 
+        def _set_state(new_state: State):
+            """Schreibt den State: in aktuelle Session oder in Hintergrund-Dict."""
+            if self.session_id == session_id:
+                self.state = new_state
+            else:
+                self._background_pipelines[session_id] = new_state
+
         try:
             # 1. Transkription (CPU-intensiv → ThreadPoolExecutor)
             logger.info("Starte Transkription...")
-            if self.session_id == session_id:
-                self.state = State.TRANSCRIBING
+            _set_state(State.TRANSCRIBING)
 
             transcript_path = await loop.run_in_executor(
                 self._executor,
@@ -376,8 +392,7 @@ class SessionManager:
 
             # 2. Protokollerstellung
             logger.info("Starte Protokollerstellung...")
-            if self.session_id == session_id:
-                self.state = State.GENERATING
+            _set_state(State.GENERATING)
 
             meta_raw = (session_dir / "meta.json").read_text(encoding="utf-8")
             meta = json.loads(meta_raw)
@@ -402,15 +417,14 @@ class SessionManager:
                 participants_by_channel,
             )
 
-            if self.session_id == session_id:
-                self.state = State.DONE
+            _set_state(State.DONE)
             logger.info("Session %s abgeschlossen.", session_id)
 
         except Exception as e:
             logger.exception("Fehler in der Verarbeitungs-Pipeline:")
             if self.session_id == session_id:
                 self.error_msg = str(e)
-                self.state = State.ERROR
+            _set_state(State.ERROR)
 
     def _transkribiere_sync(self, audio_path: Path, session_dir: Path) -> Path:
         """Synchroner Whisper-Aufruf (läuft im ThreadPoolExecutor)."""
@@ -456,3 +470,8 @@ class SessionManager:
         self._channel_events     = []
         self._kicked_triggered   = False
         self._loop               = None
+        # Abgeschlossene Hintergrund-Pipelines bereinigen (laufende bleiben erhalten)
+        self._background_pipelines = {
+            sid: state for sid, state in self._background_pipelines.items()
+            if state not in (State.DONE, State.ERROR)
+        }

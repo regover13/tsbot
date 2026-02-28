@@ -282,6 +282,8 @@ Erreichbar unter `https://tsbot.devprops.de` (Login mit `API_USER` / `API_SECRET
 8. **Neue Aufnahme während TRANSCRIBING/GENERATING** → möglich. Die laufende Verarbeitung
    läuft im Hintergrund weiter und schreibt ihr Protokoll in den eigenen Session-Ordner.
    Nur während `RECORDING` ist ein Neustart blockiert (Audio-Hardware belegt).
+   Laufende Hintergrund-Pipelines werden im Status-Bereich separat angezeigt
+   (Session-ID + TRANSCRIBING/GENERATING-Badge).
 
 Der Status-Badge zeigt den Fortschritt:
 `IDLE` → `RECORDING` → `TRANSCRIBING` → `GENERATING` → `DONE`
