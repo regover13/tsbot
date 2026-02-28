@@ -12,7 +12,8 @@ Protokolle benötigen, ohne manuell mitschreiben zu müssen.**
 - **Automatische Aufnahme** – PulseAudio Null-Sink (Linux) oder VB-Cable (Windows), headless im Hintergrund
 - **Transkription mit [faster-whisper](https://github.com/SYSTRAN/faster-whisper)** (Systran) – 3–5× schneller als das OpenAI-Original, CPU-optimiert (int8), Modell `medium` als Standard; Modell-Gewichte stammen von OpenAI (Open Source), kein API-Call
 - **Sprechererkennung** – Der Bot erfasst per TS3 ClientQuery Events (`notifytalkstatuschange`), wer wann spricht.
-  Whisper-Segmente werden automatisch mit Sprechernamen annotiert: `[00:45 - 01:30] Max Mustermann: Text`
+  Whisper-Segmente werden automatisch mit Sprechernamen annotiert: `[00:45 - 01:30] Max Mustermann: Text`.
+  Die ClientQuery-Verbindung bleibt durch einen Keepalive (alle 60s) dauerhaft aktiv – auch bei langen Sitzungen ohne Aktivität.
 - **KI-Protokollerstellung** – Claude ordnet Transkript-Abschnitte automatisch den Agenda-Punkten zu,
   schreibt Zusammenfassungen, erkennt Beschlüsse und gibt strukturierte Aufzählungen (Events, Termine,
   Programmpunkte) als Bullet-Liste aus
@@ -731,6 +732,12 @@ runuser -u tsbot -- env XDG_RUNTIME_DIR=/run/user/1000 DISPLAY=:99 \
 tail -f /home/tsbot/ts3client.log
 journalctl -u tsbot-pulseaudio --since "5 min ago"
 ```
+
+### Aufnahme stoppt automatisch nach ~10 Minuten
+
+Der TS3-Client schließt inaktive ClientQuery-Verbindungen nach 600 Sekunden.
+Der Bot sendet alle 60s einen Keepalive – ist das Update eingespielt, tritt dieses Problem nicht mehr auf.
+Falls es dennoch passiert: Container neu starten (`docker restart tsbot-tsbot-api-1`).
 
 ### ServerQuery-Verbindung schlägt fehl
 
