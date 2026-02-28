@@ -188,6 +188,7 @@ class TSClientMonitor:
             # Event-Loop: kurzer Timeout damit _running-Flag zeitnah geprüft wird
             s.settimeout(2.0)
             buf = ""
+            _last_keepalive = time.time()
             while self._running:
                 try:
                     chunk = s.recv(4096).decode("utf-8", errors="replace")
@@ -202,6 +203,10 @@ class TSClientMonitor:
                         if line:
                             self._process_event(line)
                 except socket.timeout:
+                    # Keepalive alle 60s senden damit ClientQuery-Timeout (600s) nicht greift
+                    if time.time() - _last_keepalive >= 60:
+                        s.sendall(b"whoami\n")
+                        _last_keepalive = time.time()
                     continue
                 except Exception as e:
                     if self._running:
