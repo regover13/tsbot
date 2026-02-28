@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 _CQ_HOST    = "127.0.0.1"
 _CQ_PORT    = 25639
-_CQ_TIMEOUT = 8.0
+_CQ_TIMEOUT = 3.0
 
 
 def _ts3_unescape(s: str) -> str:
@@ -314,6 +314,7 @@ class TSClientControl:
         self._server_port = int(os.environ.get("TS_PORT", "9987"))
         self._server_pass = os.environ.get("TS_SERVER_PASS", "")
         self._nickname    = os.environ.get("TS_NICKNAME", "FriesenFliegerBot")
+        self._own_clid: str | None = None  # gecacht nach erstem whoami
 
     def connect(self, channel_id: int = 0) -> bool:
         """
@@ -375,20 +376,26 @@ class TSClientControl:
         """
         Bewegt den Bot in einen anderen Kanal (ohne Server-Reconnect).
         Gibt True zurück wenn die ClientQuery-Anfrage erfolgreich war.
+        Eigene clid wird nach dem ersten Aufruf gecacht → nur 1 Socket-Verbindung nötig.
         """
         try:
-            resp = _query(["whoami"])
-            m = re.search(r'\bclid=(\d+)', resp[0] if resp else "")
-            if not m:
-                logger.warning("move_to_channel: Eigene Client-ID nicht ermittelbar.")
-                return False
-            own_clid = m.group(1)
-            resp2 = _query([f"clientmove clid={own_clid} cid={channel_id}"])
-            ok = bool(resp2 and "error id=0" in resp2[0])
+            if not self._own_clid:
+                # clid noch unbekannt → einmalig per whoami ermitteln und cachen
+                resp = _query(["whoami"])
+                m = re.search(r'\bclid=(\d+)', resp[0] if resp else "")
+                if not m:
+                    logger.warning("move_to_channel: Eigene Client-ID nicht ermittelbar.")
+                    return False
+                self._own_clid = m.group(1)
+
+            # clid bekannt → direkt verschieben (1 Verbindung statt 2)
+            resp = _query([f"clientmove clid={self._own_clid} cid={channel_id}"])
+            ok = bool(resp and "error id=0" in resp[0])
+
             if ok:
-                logger.info("Bot in Kanal %d verschoben (manuell).", channel_id)
+                logger.info("Bot in Kanal %d verschoben.", channel_id)
             else:
-                logger.warning("clientmove Antwort: %s", resp2)
+                logger.warning("clientmove Antwort: %s", resp)
             return ok
         except Exception as e:
             logger.error("move_to_channel fehlgeschlagen: %s", e)
