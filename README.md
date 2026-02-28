@@ -253,25 +253,51 @@ systemd-Service (`tsbot-pulseaudio`) auf dem Host. Der Container bekommt Zugriff
 
 ### Einmaliger Server-Setup
 
+**1. tsbot-api systemd-Service stoppen (Docker übernimmt)**
 ```bash
-# 1. tsbot-api systemd-Service stoppen (Docker übernimmt)
 systemctl stop tsbot-api
 systemctl disable tsbot-api
-
-# 2. GHCR-Image öffentlich setzen:
-#    GitHub → Packages → tsbot → Package settings → Make public
-#    Alternativ: Portainer Registry mit GitHub PAT konfigurieren
-
-# 3. Portainer Stack erstellen:
-#    Stacks → Add Stack → Repository → https://github.com/regover13/tsbot
-#    Compose-Datei: docker-compose.yml
-#    Auto-update: "GitOps updates" aktivieren → Webhook-URL kopieren
-
-# 4. Webhook-URL als GitHub Secret speichern:
-#    Repository → Settings → Secrets → Actions → New secret
-#    Name: PORTAINER_WEBHOOK_URL
-#    Value: (URL aus Portainer)
 ```
+
+**2. Portainer: GHCR-Registry konfigurieren**
+
+Portainer → Registries → Add registry → Custom registry:
+
+| Feld | Wert |
+|------|------|
+| Name | `ghcr.io` |
+| URL | `ghcr.io` |
+| Username | `regover13` |
+| Password | GitHub PAT mit `read:packages`-Scope |
+
+**3. Portainer: Stack erstellen**
+
+Stacks → Add stack → Repository:
+
+| Feld | Wert |
+|------|------|
+| Repository URL | `https://github.com/regover13/tsbot` |
+| Compose path | `docker-compose.yml` |
+| Reference | `refs/heads/master` |
+| Authentication | ✅ Username + GitHub PAT (Scope: `repo`) |
+
+Unter **Environment variables → Advanced mode** den Inhalt der `config.env` einfügen
+(Kommentarzeilen weglassen, nur `KEY=VALUE`-Zeilen). Zusätzlich:
+```
+XDG_RUNTIME_DIR=/run/user/1000
+PULSE_SERVER=unix:/run/user/1000/pulse/native
+```
+
+→ **Deploy the stack** → Webhook-URL aus Portainer kopieren
+
+> **Hinweis:** `env_file` wird nicht verwendet, da Portainer als Docker-Container läuft
+> und Host-Pfade nicht direkt lesen kann. Env-Variablen werden im Portainer-Stack-UI verwaltet.
+
+**4. Webhook-URL als GitHub Secret speichern**
+
+GitHub → Repository → Settings → Secrets → Actions → New secret:
+- Name: `PORTAINER_WEBHOOK_URL`
+- Value: (URL aus Portainer)
 
 Nach dem Setup wird bei jedem Push auf `master` automatisch:
 1. Das Docker-Image gebaut und auf GHCR gepusht
