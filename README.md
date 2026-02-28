@@ -78,15 +78,15 @@ Zwei Betriebsmodi:
 
 1. [Features](#features)
 2. [Datenschutz & Datensicherheit](#datenschutz--datensicherheit)
-3. [Windows-Setup (lokal)](#3-windows-setup-lokal)
-4. [Linux-Server-Setup (Bot)](#4-linux-server-setup-bot)
-5. [Docker-Deployment & CI/CD](#5-docker-deployment--cicd)
-6. [Konfiguration](#6-konfiguration)
-7. [Web-Interface bedienen](#7-web-interface-bedienen)
-8. [Projektstruktur](#8-projektstruktur)
-9. [Zugriff und Sicherheit](#9-zugriff-und-sicherheit)
-10. [Backup nach OneDrive](#10-backup-nach-onedrive)
-11. [Troubleshooting](#11-troubleshooting)
+3. [Windows-Setup (lokal)](#1-windows-setup-lokal)
+4. [Linux-Server-Setup (Bot)](#2-linux-server-setup-bot)
+5. [Docker-Deployment & CI/CD](#3-docker-deployment--cicd)
+6. [Konfiguration](#4-konfiguration)
+7. [Web-Interface bedienen](#5-web-interface-bedienen)
+8. [Projektstruktur](#6-projektstruktur)
+9. [Zugriff und Sicherheit](#7-zugriff-und-sicherheit)
+10. [Backup nach OneDrive](#8-backup-nach-onedrive)
+11. [Troubleshooting](#9-troubleshooting)
 
 ---
 
