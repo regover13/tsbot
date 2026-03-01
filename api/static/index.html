@@ -354,7 +354,7 @@
 
 <script>
 const LAST_CHANNEL_KEY = 'tsbot_last_channel_id';
-const EXTRA_KEY        = 'tsbot_extra_instruktionen';
+let _extraSaveTimer = null;
 let _channelNames = {};   // id → name, befüllt von loadChannels()
 let _currentState = 'IDLE';
 
@@ -440,11 +440,23 @@ function saveLastChannel() {
 }
 
 function saveExtra() {
-  const val = document.getElementById('f-extra').value;
-  if (val) {
-    localStorage.setItem(EXTRA_KEY, val);
-  } else {
-    localStorage.removeItem(EXTRA_KEY);
+  clearTimeout(_extraSaveTimer);
+  _extraSaveTimer = setTimeout(async () => {
+    const text = document.getElementById('f-extra').value;
+    try {
+      await api('/settings/extra', { method: 'PUT', body: JSON.stringify({ text }) });
+    } catch(e) {
+      toast('Instruktionen speichern fehlgeschlagen: ' + e.message, 'error');
+    }
+  }, 800);
+}
+
+async function loadExtra() {
+  try {
+    const d = await api('/settings/extra');
+    document.getElementById('f-extra').value = d.text || '';
+  } catch(e) {
+    // nicht kritisch, still ignorieren
   }
 }
 
@@ -791,9 +803,7 @@ function escHtml(s) {
   startPoll();
   loadProtocols();
   loadChannels();
-  // Gespeicherte Instruktionen wiederherstellen
-  const savedExtra = localStorage.getItem(EXTRA_KEY);
-  if (savedExtra) document.getElementById('f-extra').value = savedExtra;
+  loadExtra();
 })();
 </script>
 </body>

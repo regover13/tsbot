@@ -448,7 +448,7 @@ def erstelle_protokoll(transkript_pfad: str, thema: str,
         tbl.style = 'Table Grid'
         hdr = tbl.rows[0].cells
         hdr[0].text = "Name"
-        hdr[1].text = "FRS-Nummer"
+        hdr[1].text = "Callsign"
         for r in hdr:
             r.paragraphs[0].runs[0].bold = True
         for t in liste:

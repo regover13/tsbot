@@ -20,7 +20,7 @@ from fastapi.staticfiles import StaticFiles
 import secrets
 
 from bot.session_manager import SessionManager
-from api.routes import session, status as status_route, files, agenda, channels
+from api.routes import session, status as status_route, files, agenda, channels, settings
 
 # Logging
 logging.basicConfig(
@@ -101,6 +101,11 @@ app.include_router(
 app.include_router(
     channels.router,
     prefix="/channels",
+    dependencies=[Depends(require_auth)],
+)
+app.include_router(
+    settings.router,
+    prefix="/settings",
     dependencies=[Depends(require_auth)],
 )
 

@@ -20,7 +20,7 @@ Protokolle benötigen, ohne manuell mitschreiben zu müssen.**
 - **Teilnehmer-Tracking** – Automatisch per TS3 ServerQuery; pro Kanal separate Teilnehmerliste im Protokoll
 - **Kanalwechsel** – Bot folgt dem Moderator in andere Kanäle, Kanalwechsel werden im Protokoll vermerkt
 - **Zusätzliche Instruktionen** – Freier Text direkt an Claude, z.B. *„Keine Transkript-Auszüge"* oder
-  *„ICAO-Codes ausschreiben"*
+  *„ICAO-Codes ausschreiben"* — wird **server-seitig** gespeichert und gilt für alle Nutzer gleich
 - **Web-Interface** – FastAPI-Dashboard zum Starten/Stoppen, Kanalauswahl, Agenda-Verwaltung, Protokoll-Download
 - **Docker + CI/CD** – Automatisches Deployment via GitHub Actions + Portainer bei jedem Push auf `master`
 - **Word-Protokoll (.docx)** – Mit Inhaltsverzeichnis, Metadaten, Teilnehmertabelle, Zeitangaben und
@@ -461,7 +461,8 @@ Erreichbar unter `https://tsbot.devprops.de` (Login mit `API_USER` / `API_SECRET
    Das Dropdown lädt alle Kanäle live vom Server. Der zuletzt verwendete Kanal wird
    automatisch vorausgewählt (im Browser-LocalStorage gespeichert).
 3. **Agenda** leer lassen = Server-Agenda wird verwendet; oder für diese Sitzung überschreiben
-4. **Zusätzliche Instruktionen** optional — freier Text, der direkt an Claude angehängt wird
+4. **Zusätzliche Instruktionen** optional — freier Text, der direkt an Claude angehängt wird.
+   Wird server-seitig in `data/extra_instruktionen.txt` gespeichert und erscheint bei allen Nutzern gleich.
    Beispiele: *„Schreibe Beschlüsse besonders hervor."* / *„Ignoriere Small Talk."*
 5. **▶ Aufnahme starten** → Bot verbindet sich mit TS3, tritt dem Kanal bei,
    Aufnahme und Teilnehmer-Tracking starten automatisch
