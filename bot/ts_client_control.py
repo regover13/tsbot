@@ -243,6 +243,15 @@ class TSClientMonitor:
                     logger.info("TSClientMonitor: Bot vom Server gekickt (notifyclientkicked).")
                     self._fire_kicked()
 
+        elif line.startswith("notifycliententerview"):
+            m_clid = re.search(r'\bclid=(\d+)', line)
+            m_nn   = re.search(r'\bclient_nickname=(\S+)', line)
+            if m_clid and m_nn:
+                cid  = int(m_clid.group(1))
+                name = _ts3_unescape(m_nn.group(1))
+                self._clid_names[cid] = name
+                logger.debug("TSClientMonitor: Name gecacht via cliententerview: %d → %s", cid, name)
+
         elif line.startswith("notifytalkstatuschange"):
             m_clid   = re.search(r'\bclid=(\d+)', line)
             m_status = re.search(r'\bstatus=(\d+)', line)
