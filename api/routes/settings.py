@@ -43,10 +43,12 @@ class ExtraBody(BaseModel):
 
 @router.get("/extra", summary="Zusätzliche Protokoll-Instruktionen laden")
 async def get_extra():
-    """Gibt die gespeicherten Zusatz-Instruktionen zurück (Default wenn nicht vorhanden)."""
-    if not EXTRA_PATH.exists():
-        return {"text": DEFAULT_INSTRUKTIONEN}
-    return {"text": EXTRA_PATH.read_text(encoding="utf-8")}
+    """Gibt die gespeicherten Zusatz-Instruktionen zurück (Default wenn nicht vorhanden oder leer)."""
+    if EXTRA_PATH.exists():
+        content = EXTRA_PATH.read_text(encoding="utf-8")
+        if content.strip():
+            return {"text": content}
+    return {"text": DEFAULT_INSTRUKTIONEN}
 
 
 @router.put("/extra", summary="Zusätzliche Protokoll-Instruktionen speichern")
