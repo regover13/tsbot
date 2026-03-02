@@ -235,8 +235,20 @@ def ki_zuordnung(volltext: str, segmente: list, agenda: list, api_key: str, mode
         teilnehmer_block = "\nTEILNEHMER (exakte Namen und Kennzeichen – unverändert übernehmen):\n" \
                            + "\n".join(zeilen) + "\n"
 
+    # ── Sitzungsdatum-Block ───────────────────────────────────
+    datum_block = ""
+    if session_started_at:
+        wochentage = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
+        wochentag = wochentage[session_started_at.weekday()]
+        datum_block = (
+            f"\nSITZUNGSDATUM: {wochentag}, {session_started_at.strftime('%d.%m.%Y')}, "
+            f"Sitzungsstart: {session_started_at.strftime('%H:%M')} Uhr\n"
+            "Nutze dieses Datum, um relative Zeitangaben im Transkript (z.B. 'morgen', 'heute', "
+            "'nächste Woche') korrekt in absolute Daten aufzulösen.\n"
+        )
+
     prompt = f"""Du bist ein professioneller Protokollschreiber. Analysiere das Transkript und weise jeden Abschnitt dem passenden Agenda-Punkt zu.
-{teilnehmer_block}
+{datum_block}{teilnehmer_block}
 AGENDA:
 {agenda_text}
 
