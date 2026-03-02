@@ -198,13 +198,21 @@
       padding: 0.65rem 1.1rem; border-radius: 8px;
       box-shadow: 0 4px 14px rgba(0,0,0,.5);
       font-size: 0.88rem; opacity: 0; pointer-events: none;
-      transition: opacity 0.25s; max-width: 280px;
+      transition: opacity 0.25s; max-width: 340px;
       border-left: 3px solid transparent;
+      display: flex; align-items: flex-start; gap: .6rem;
     }
-    #toast.show   { opacity: 1; }
+    #toast.show   { opacity: 1; pointer-events: auto; }
     #toast.ok     { border-left-color: var(--green); }
     #toast.error  { border-left-color: var(--red); }
     #toast.info   { border-left-color: var(--blue); }
+    #toast .toast-msg { flex: 1; user-select: text; word-break: break-word; }
+    #toast .toast-close {
+      background: none; border: none; color: var(--muted);
+      cursor: pointer; font-size: 1rem; line-height: 1;
+      padding: 0; flex-shrink: 0; margin-top: .05rem;
+    }
+    #toast .toast-close:hover { color: var(--text); }
 
     /* ── Spinner ──────────────────────────────────── */
     .spinner {
@@ -908,7 +916,7 @@ async function resetRegenExtraToDefault() {
     const d = await api('/settings/extra/default');
     document.getElementById('regen-extra').value = d.text || '';
   } catch (e) {
-    showToast('Fehler beim Laden der Standard-Vorlage', 'error');
+    toast('Fehler beim Laden der Standard-Vorlage', 'error');
   }
 }
 
@@ -962,10 +970,20 @@ function _pollRegen(sessionId) {
 let _toastTimer = null;
 function toast(msg, type = 'ok') {
   const el = document.getElementById('toast');
-  el.textContent = msg;
-  el.className = 'show ' + type;
   clearTimeout(_toastTimer);
-  _toastTimer = setTimeout(() => { el.className = ''; }, 4500);
+  if (type === 'error') {
+    el.innerHTML = `<span class="toast-msg">${escHtml(msg)}</span>` +
+                   `<button class="toast-close" onclick="dismissToast()" title="Schließen">✕</button>`;
+    el.className = 'show ' + type;
+  } else {
+    el.innerHTML = `<span class="toast-msg">${escHtml(msg)}</span>`;
+    el.className = 'show ' + type;
+    _toastTimer = setTimeout(() => { el.className = ''; }, 4500);
+  }
+}
+function dismissToast() {
+  clearTimeout(_toastTimer);
+  document.getElementById('toast').className = '';
 }
 
 // ═══════════════════════════════════════════════════════════

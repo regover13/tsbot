@@ -541,6 +541,13 @@ def erstelle_protokoll(transkript_pfad: str, thema: str,
 
     doc.save(ausgabe_datei)
     print(f"\nProtokoll gespeichert: {ausgabe_datei}")
+
+    # Alte Protokoll-Dateien mit abweichendem Namen entfernen (z.B. nach Umbenennung durch Regen)
+    for alte_datei in Path(ausgabe_ordner).glob("Protokoll_*.docx"):
+        if alte_datei != Path(ausgabe_datei):
+            alte_datei.unlink()
+            print(f"Altes Protokoll entfernt: {alte_datei.name}")
+
     return ausgabe_datei
 
 
