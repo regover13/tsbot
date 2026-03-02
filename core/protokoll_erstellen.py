@@ -260,7 +260,9 @@ Hinweise:
 - Jeden Agenda-Punkt aufführen, auch ohne Transkript-Treffer
 - Zusammenfassung sachlich und neutral, nur 1-2 einleitende Sätze
 - details: Aufzählungsliste für Events, Programmpunkte, Termine, Stichpunkte – leer lassen wenn kein Listeninhalt vorhanden
-- Beschlüsse = konkrete Entscheidungen oder Aktionspunkte"""
+- Beschlüsse = konkrete Entscheidungen oder Aktionspunkte
+- WICHTIG: Antworte mit reinem JSON ohne Markdown-Code-Blöcke (kein ```json)
+- WICHTIG: Keine wörtlichen Zitate mit Anführungszeichen in den Strings – paraphrasieren statt zitieren"""
 
     client = anthropic.Anthropic(api_key=api_key)
     message = client.messages.create(
@@ -271,16 +273,22 @@ Hinweise:
     )
 
     antwort = message.content[0].text.strip()
-    print(f"Claude Antwort ({len(antwort)} Zeichen, stop_reason={message.stop_reason}): {antwort[:300]}...")
+    # Markdown-Code-Blöcke entfernen (```json ... ``` oder ``` ... ```)
+    antwort = re.sub(r'^```(?:json)?\s*', '', antwort)
+    antwort = re.sub(r'\s*```$', '', antwort).strip()
+    print(f"Claude Antwort ({len(antwort)} Zeichen, stop_reason={message.stop_reason}): {antwort[:200]}...")
     json_match = re.search(r'\{.*\}', antwort, re.DOTALL)
     if json_match:
-        try:
-            data = json.loads(json_match.group())
-            punkte = data.get("agenda_punkte", [])
-            print(f"JSON OK – {len(punkte)} Agenda-Punkte geparst.")
-            return punkte
-        except (json.JSONDecodeError, KeyError) as e:
-            print(f"JSON-Parse-Fehler: {e} – Antwort-Anfang: {antwort[:500]}")
+        json_str = json_match.group()
+        for versuch, text in enumerate([json_str,
+                                        re.sub(r'(?<=[^\\])"(?=[^,\]\}:\n])', r'\\"', json_str)]):
+            try:
+                data = json.loads(text)
+                punkte = data.get("agenda_punkte", [])
+                print(f"JSON OK (Versuch {versuch+1}) – {len(punkte)} Agenda-Punkte geparst.")
+                return punkte
+            except (json.JSONDecodeError, KeyError) as e:
+                print(f"JSON-Parse-Fehler (Versuch {versuch+1}): {e}")
     else:
         print(f"Kein JSON in Antwort gefunden. Antwort: {antwort[:500]}")
     return []
