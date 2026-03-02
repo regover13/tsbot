@@ -190,7 +190,7 @@ def ki_zuordnung(volltext: str, segmente: list, agenda: list, api_key: str, mode
         import anthropic
     except ImportError:
         print("HINWEIS: anthropic-Paket nicht installiert.")
-        return [], True
+        return []
 
     print("Sende Transkript an Claude API zur Zuordnung...")
     transkript_text = "\n".join([f"[{s} - {e}] {t}" for s, e, t in segmente]) if segmente else volltext
@@ -245,7 +245,6 @@ TRANSKRIPT:
 {kanal_block}{extra_block}
 Antworte NUR mit folgendem JSON:
 {{
-  "include_transkript": true,
   "agenda_punkte": [
     {{
       "punkt": "Exakter Name des Agenda-Punkts",
@@ -262,8 +261,7 @@ Hinweise:
 - Jeden Agenda-Punkt aufführen, auch ohne Transkript-Treffer
 - Zusammenfassung sachlich und neutral, nur 1-2 einleitende Sätze
 - details: Aufzählungsliste für Events, Programmpunkte, Termine, Stichpunkte – leer lassen wenn kein Listeninhalt vorhanden
-- Beschlüsse = konkrete Entscheidungen oder Aktionspunkte
-- Setze include_transkript standardmäßig auf false – nur auf true setzen wenn der Nutzer das Transkript explizit anfordert"""
+- Beschlüsse = konkrete Entscheidungen oder Aktionspunkte"""
 
     client = anthropic.Anthropic(api_key=api_key)
     message = client.messages.create(
@@ -278,10 +276,10 @@ Hinweise:
     if json_match:
         try:
             data = json.loads(json_match.group())
-            return data.get("agenda_punkte", []), bool(data.get("include_transkript", False))
+            return data.get("agenda_punkte", [])
         except (json.JSONDecodeError, KeyError):
             pass
-    return [], False
+    return []
 
 
 # ── Word-Dokument erstellen ───────────────────────────────────
@@ -341,7 +339,6 @@ def erstelle_protokoll(transkript_pfad: str, thema: str,
 
     # KI-Zuordnung Transkript → Agenda
     ki_punkte = []
-    include_transkript = True
     if agenda and hat_api:
         # Alle Teilnehmer aus beiden Quellen zusammenführen
         alle_teilnehmer = list(teilnehmer_liste or [])
@@ -354,7 +351,7 @@ def erstelle_protokoll(transkript_pfad: str, thema: str,
                         alle_teilnehmer.append(t)
                         seen.add(key)
 
-        ki_punkte, include_transkript = ki_zuordnung(
+        ki_punkte = ki_zuordnung(
             volltext, segmente, agenda, api_key, modell,
             extra_instruktionen=extra_instruktionen,
             kanal_wechsel=kanal_wechsel or [],
@@ -506,21 +503,6 @@ def erstelle_protokoll(transkript_pfad: str, thema: str,
                     b_clean = re.sub(r'^[•\-–—]\s*', '', b.strip())
                     doc.add_paragraph(b_clean, style='List Bullet')
 
-            if eintrag.get("segmente") and include_transkript:
-                doc.add_paragraph().add_run("Transkript-Auszüge:").bold = True
-                _seg_re = re.compile(r'^(\[\d{2}:\d{2}(?:\s*-\s*\d{2}:\d{2})?\])\s*(.*)', re.DOTALL)
-                for seg in eintrag["segmente"]:
-                    p = doc.add_paragraph()
-                    p.paragraph_format.left_indent = Cm(1)
-                    m = _seg_re.match(seg)
-                    ts_teil   = m.group(1) if m else ""
-                    text_teil = m.group(2) if m else seg
-                    r_t = p.add_run(ts_teil + "  ")
-                    r_t.bold = True
-                    r_t.font.size = Pt(9)
-                    r_t.font.color.rgb = RGBColor(0x70, 0x70, 0x70)
-                    p.add_run(text_teil)
-
             doc.add_paragraph()
 
     elif agenda:
@@ -533,20 +515,6 @@ def erstelle_protokoll(transkript_pfad: str, thema: str,
     else:
         for _ in range(6):
             doc.add_paragraph().add_run("_" * 70)
-
-    # ── Vollständiges Transkript ───────────────────────────────
-    if include_transkript:
-        doc.add_heading('Vollständiges Transkript', level=1)
-        if segmente:
-            for start, ende, text in segmente:
-                p = doc.add_paragraph()
-                r = p.add_run(f"[{start}]  ")
-                r.bold = True
-                r.font.color.rgb = RGBColor(0x70, 0x70, 0x70)
-                r.font.size = Pt(9)
-                p.add_run(text)
-        else:
-            doc.add_paragraph(volltext).style.font.size = Pt(10)
 
     doc.save(ausgabe_datei)
     print(f"\nProtokoll gespeichert: {ausgabe_datei}")
