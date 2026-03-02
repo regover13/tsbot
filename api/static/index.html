@@ -409,6 +409,21 @@
     </div>
   </div>
 
+  <!-- Löschen-Bestätigung Modal -->
+  <div id="delete-modal" style="display:none" onclick="if(event.target===this)closeDeleteModal()">
+    <div class="modal-box">
+      <h3>Session löschen</h3>
+      <p id="delete-session-label" style="color:var(--muted);margin-bottom:.5rem;font-size:.85rem"></p>
+      <p style="color:var(--red);font-size:.85rem;margin-bottom:1.2rem">
+        Audio, Transkript und Protokoll werden <strong>unwiderruflich</strong> entfernt.
+      </p>
+      <div class="btn-row">
+        <button class="btn btn-ghost" onclick="closeDeleteModal()">Abbrechen</button>
+        <button class="btn btn-danger" id="delete-confirm-btn" onclick="confirmDelete()">🗑 Endgültig löschen</button>
+      </div>
+    </div>
+  </div>
+
   <div id="toast"></div>
 
 <script>
@@ -876,18 +891,42 @@ function renderProtocols(sessions) {
   });
 }
 
-async function deleteSession(sessionId, btn) {
-  if (!confirm(`Session "${sessionId}" wirklich löschen?\n\nAlle Dateien (Audio, Transkript, Protokoll) werden unwiderruflich entfernt.`)) return;
-  btn.disabled = true;
-  btn.textContent = '…';
+let _deleteSessionId = null;
+let _deleteBtn = null;
+
+function deleteSession(sessionId, btn) {
+  const s = _sessions.find(x => x.session_id === sessionId);
+  _deleteSessionId = sessionId;
+  _deleteBtn = btn;
+  const label = (s && s.thema ? s.thema + ' · ' : '') + sessionId;
+  document.getElementById('delete-session-label').textContent = label;
+  const confirmBtn = document.getElementById('delete-confirm-btn');
+  confirmBtn.disabled = false;
+  confirmBtn.textContent = '🗑 Endgültig löschen';
+  document.getElementById('delete-modal').style.display = 'flex';
+}
+
+function closeDeleteModal() {
+  document.getElementById('delete-modal').style.display = 'none';
+  _deleteSessionId = null;
+  _deleteBtn = null;
+}
+
+async function confirmDelete() {
+  if (!_deleteSessionId) return;
+  const confirmBtn = document.getElementById('delete-confirm-btn');
+  confirmBtn.disabled = true;
+  confirmBtn.textContent = '…';
+  if (_deleteBtn) { _deleteBtn.disabled = true; _deleteBtn.textContent = '…'; }
   try {
-    await api(`/protocols/${sessionId}`, { method: 'DELETE' });
-    toast(`Session ${sessionId} gelöscht.`, 'ok');
+    await api(`/protocols/${_deleteSessionId}`, { method: 'DELETE' });
+    toast(`Session ${_deleteSessionId} gelöscht.`, 'ok');
+    closeDeleteModal();
     loadProtocols();
   } catch(e) {
     toast('Löschen fehlgeschlagen: ' + e.message, 'error');
-    btn.disabled = false;
-    btn.textContent = '🗑 Löschen';
+    if (_deleteBtn) { _deleteBtn.disabled = false; _deleteBtn.textContent = '🗑 Löschen'; }
+    closeDeleteModal();
   }
 }
 

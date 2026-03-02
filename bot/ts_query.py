@@ -210,17 +210,30 @@ class TSQueryTracker:
 
     def _parse_nickname(self, nick: str) -> dict:
         """
-        Parst TeamSpeak-Nickname im Format "Vorname Nachname/FRSxxx" oder
-        "Vorname Nachname FRS999N ...".
-        FRS-Nummern können einen Buchstaben-Suffix haben (NATO-Alphabet, z.B. FRS999N).
-        Gibt {"name": str, "frs": str} zurück.
+        Parst TeamSpeak-Nickname. FRS-Nummer kann vor oder nach dem Namen stehen,
+        mit beliebigen Trennzeichen (/, |, Leerzeichen) oder direkt angehängt.
+        Beispiele:
+          "Vorname Nachname/FRS22"     → name="Vorname Nachname", frs="FRS22"
+          "Klaus Löfflad | FRS22"      → name="Klaus Löfflad",    frs="FRS22"
+          "FRS22/Vorname Nachname"     → name="Vorname Nachname", frs="FRS22"
+          "Marco WeißFRS135(MSFS2024)" → name="Marco Weiß",       frs="FRS135"
         """
         nick = nick.strip()
-        # FRS-Nummer irgendwo im Nickname suchen: FRS + Ziffern + opt. Buchstabe
-        m = re.search(r'\bFRS(\d+[A-Z]?)\b', nick, re.IGNORECASE)
+        # FRS-Nummer ohne führende \b suchen (Unicode-Buchstaben wie ß enden nicht auf \b)
+        m = re.search(r'FRS(\d+[A-Z]?)', nick, re.IGNORECASE)
         if m:
             frs = m.group(0).upper()
-            # Name = alles vor dem FRS-Match, Trennzeichen bereinigen
-            name_part = nick[:m.start()].strip().rstrip('/( ')
-            return {"name": name_part, "frs": frs}
+            _sep = '/( |'
+            before = nick[:m.start()].strip().strip(_sep)
+            # Klammer-Reste nach FRS entfernen (z.B. "(MSFS2024)")
+            after_raw = nick[m.end():]
+            after = re.sub(r'^\(.*?\)', '', after_raw).strip().strip(_sep + ')')
+            # Bevorzuge den Teil der wie ein Vor-/Nachname aussieht (enthält Leerzeichen)
+            if ' ' in before:
+                name = before
+            elif ' ' in after:
+                name = after
+            else:
+                name = before or after
+            return {"name": name, "frs": frs}
         return {"name": nick, "frs": ""}
