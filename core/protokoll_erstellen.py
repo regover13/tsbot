@@ -420,7 +420,7 @@ def erstelle_protokoll(transkript_pfad: str, thema: str,
     from docx.oxml import OxmlElement
     toc_para = doc.add_paragraph()
     fld = OxmlElement('w:fldSimple')
-    fld.set(qn('w:instr'), ' TOC \\o "1-3" \\h \\z \\u ')
+    fld.set(qn('w:instr'), ' TOC \\o "1-2" \\h \\z \\u ')
     run = OxmlElement('w:r')
     rPr = OxmlElement('w:rPr')
     run.append(rPr)
@@ -491,7 +491,12 @@ def erstelle_protokoll(transkript_pfad: str, thema: str,
 
             if eintrag.get("details"):
                 for d in eintrag["details"]:
-                    doc.add_paragraph(d, style='List Bullet')
+                    if d.rstrip().endswith(':'):
+                        # Unterüberschrift (Heading 3 – nicht im TOC wegen "1-2"-Begrenzung)
+                        h3 = doc.add_heading(d, level=3)
+                        h3.runs[0].font.color.rgb = RGBColor(0x2D, 0x3A, 0x4A)
+                    else:
+                        doc.add_paragraph(d, style='List Bullet')
 
             if eintrag.get("beschluesse"):
                 doc.add_paragraph().add_run("Beschlüsse / Aktionspunkte:").bold = True
