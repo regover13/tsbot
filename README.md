@@ -432,7 +432,7 @@ Alle Einstellungen in `/opt/tsbot/config/config.env` (Linux) bzw. `config.txt` (
 | Variable | Beschreibung | Beispiel |
 |----------|-------------|---------|
 | `ANTHROPIC_API_KEY` | Claude API-Key | `sk-ant-...` |
-| `CLAUDE_MODEL` | Claude-Modell | `claude-sonnet-4-5-20250929` |
+| `CLAUDE_MODEL` | Claude-Modell | `claude-sonnet-4-6` |
 | `TS_HOST` | TS3-Server IP | `127.0.0.1` |
 | `TS_QUERY_PORT` | ServerQuery Port | `10011` |
 | `TS_QUERY_USER` | ServerQuery User | `serveradmin` |
