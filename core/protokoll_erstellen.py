@@ -263,7 +263,7 @@ Hinweise:
 - Zusammenfassung sachlich und neutral, nur 1-2 einleitende Sätze
 - details: Aufzählungsliste für Events, Programmpunkte, Termine, Stichpunkte – leer lassen wenn kein Listeninhalt vorhanden
 - Beschlüsse = konkrete Entscheidungen oder Aktionspunkte
-- Setze include_transkript auf false, wenn der Nutzer per Instruktion das Transkript aus dem Protokoll ausschließen möchte"""
+- Setze include_transkript standardmäßig auf false – nur auf true setzen wenn der Nutzer das Transkript explizit anfordert"""
 
     client = anthropic.Anthropic(api_key=api_key)
     message = client.messages.create(
@@ -278,10 +278,10 @@ Hinweise:
     if json_match:
         try:
             data = json.loads(json_match.group())
-            return data.get("agenda_punkte", []), bool(data.get("include_transkript", True))
+            return data.get("agenda_punkte", []), bool(data.get("include_transkript", False))
         except (json.JSONDecodeError, KeyError):
             pass
-    return [], True
+    return [], False
 
 
 # ── Word-Dokument erstellen ───────────────────────────────────
@@ -491,17 +491,20 @@ def erstelle_protokoll(transkript_pfad: str, thema: str,
 
             if eintrag.get("details"):
                 for d in eintrag["details"]:
-                    if d.rstrip().endswith(':'):
+                    d_clean = re.sub(r'^[•\-–—]\s*', '', d.strip())
+                    if d_clean.rstrip().endswith(':'):
                         # Unterüberschrift (Heading 3 – nicht im TOC wegen "1-2"-Begrenzung)
-                        h3 = doc.add_heading(d, level=3)
+                        h3 = doc.add_heading(d_clean, level=3)
                         h3.runs[0].font.color.rgb = RGBColor(0x2D, 0x3A, 0x4A)
                     else:
-                        doc.add_paragraph(d, style='List Bullet')
+                        doc.add_paragraph(d_clean, style='List Bullet')
 
             if eintrag.get("beschluesse"):
-                doc.add_paragraph().add_run("Beschlüsse / Aktionspunkte:").bold = True
+                h3_b = doc.add_heading("Beschlüsse / Aktionspunkte:", level=3)
+                h3_b.runs[0].font.color.rgb = RGBColor(0x2D, 0x3A, 0x4A)
                 for b in eintrag["beschluesse"]:
-                    doc.add_paragraph(b, style='List Bullet')
+                    b_clean = re.sub(r'^[•\-–—]\s*', '', b.strip())
+                    doc.add_paragraph(b_clean, style='List Bullet')
 
             if eintrag.get("segmente") and include_transkript:
                 doc.add_paragraph().add_run("Transkript-Auszüge:").bold = True
