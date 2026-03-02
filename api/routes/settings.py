@@ -33,7 +33,7 @@ INHALTLICHE VORGABEN:
 - Wenn ein Sprecher dich direkt adressiert ("Claude, bitte..." / "Hinweis fürs Protokoll:"), erfasse diese Aussage EXPLIZIT als Beschluss oder Hinweis im jeweiligen Agenda-Punkt – mit dem Wortlaut der Anweisung
 - Wenn ein Sprecher eine direkte Aussage an eine andere Person richtet ("Klaus, bitte..." / "Tobias, was denkst du?"), erfasse diese Interaktion im Detail des Agenda-Punkts
 - Wörter aus dem NATO-Alphabet (Alpha, Bravo, Charlie usw.) als Großbuchstaben ohne Leerzeichen übernehmen (Beispiel: "Lima Delta" → "LD")
-- ICAO-Codes: Suche zu genannten Flugplatznamen den ICAO-Code und ergänze ihn (Beispiel: "Bremgarten" → "EDTQ – Flugplatz Bremgarten"). Umgekehrt: Zu genannten ICAO-Codes den Namen heraussuchen.\
+- ICAO-Codes: Bei JEDEM genannten Ort, Ortsnamen oder Flugplatznamen prüfen ob es dort einen Flugplatz gibt – falls ja, ICAO-Code ermitteln und ergänzen (Beispiel: "Herzogenaurach" → "EDQH – Flugplatz Herzogenaurach", "Bremgarten" → "EDTQ – Flugplatz Bremgarten"). Der Ort muss nicht explizit als Flugplatz bezeichnet werden. Umgekehrt: Zu genannten ICAO-Codes den Flugplatz- und Ortsnamen heraussuchen.\
 """
 
 
