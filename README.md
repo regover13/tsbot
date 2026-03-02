@@ -22,7 +22,7 @@ Protokolle benötigen, ohne manuell mitschreiben zu müssen.**
 - **Zusätzliche Instruktionen** – Freier Text direkt an Claude; wird **server-seitig** gespeichert
   und beim ersten Öffnen mit sinnvollen Verhaltensregeln vorbelegt. Zweistufiges System:
   aktuelle Instruktionen (auto-saved) + editierbare Standard-Vorlage (geschützt per Confirm-Dialog)
-- **Protokoll neu erstellen** – Im Tab „Protokolle" kann jede Session per **🔄 Neu erstellen**-Button
+- **Protokoll neu erstellen** – Im Tab „Protokolle" kann jede Session per **🔄 docx neu erstellen**-Button
   erneut durch Claude geschickt werden, ohne neue Aufnahme oder Transkription. Die Instruktionen
   lassen sich dabei sitzungsspezifisch anpassen; die geänderte Version überschreibt das alte `.docx`
 - **Web-Interface** – FastAPI-Dashboard zum Starten/Stoppen, Kanalauswahl, Agenda-Verwaltung, Protokoll-Download
@@ -511,7 +511,7 @@ Liste aller abgeschlossenen Sitzungen mit Download-Links für:
 - `*_transkript_*.txt` — Volltranskript mit Zeitstempeln
 - `audio.mp3` — Original-Aufnahme
 
-**🔄 Neu erstellen** öffnet ein Modal mit den gespeicherten Instruktionen dieser Session.
+**🔄 docx neu erstellen** öffnet ein Modal mit den gespeicherten Instruktionen dieser Session.
 Nach Anpassung und Bestätigung wird Claude das Protokoll neu generieren – ohne neue Aufnahme
 oder Transkription. Transkript, Teilnehmer und Agenda bleiben erhalten; das bestehende `.docx`
 wird überschrieben. Der Button wechselt zu „⏳ Läuft..." bis der Vorgang abgeschlossen ist.

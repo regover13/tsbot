@@ -291,7 +291,7 @@
           <select id="f-channel" onchange="onChannelChange()">
             <option value="">— Wird geladen… —</option>
           </select>
-          <button class="channel-reload" onclick="loadChannels()" title="Kanäle neu laden">↺</button>
+          <button class="channel-reload" onclick="loadChannels(true)" title="Kanäle neu laden">↺</button>
         </div>
         <p class="hint" id="channel-hint">Der Bot tritt diesem Kanal bei, wenn die Aufnahme startet.</p>
       </div>
@@ -393,7 +393,7 @@
       <textarea id="regen-extra" rows="6" style="width:100%;margin:.5rem 0 1rem"></textarea>
       <div class="btn-row">
         <button class="btn btn-ghost" onclick="closeRegenModal()">Abbrechen</button>
-        <button class="btn btn-green" id="regen-submit-btn" onclick="submitRegen()">🔄 Neu erstellen</button>
+        <button class="btn btn-green" id="regen-submit-btn" onclick="submitRegen()">🔄 docx neu erstellen</button>
       </div>
     </div>
   </div>
@@ -437,11 +437,11 @@ async function api(url, options = {}) {
 // ═══════════════════════════════════════════════════════════
 // Channel Dropdown
 // ═══════════════════════════════════════════════════════════
-async function loadChannels() {
+async function loadChannels(force = false) {
   const sel = document.getElementById('f-channel');
   sel.innerHTML = '<option value="">— Wird geladen… —</option>';
   try {
-    const d = await api('/channels/');
+    const d = await api('/channels/' + (force ? '?force=true' : ''));
     const channels = d.channels || [];
     sel.innerHTML = '';
 
@@ -849,7 +849,7 @@ function renderProtocols(sessions) {
             data-session-id="${escHtml(s.session_id)}"
             onclick="openRegenModal(this.dataset.sessionId)"
             ${isRegen ? 'disabled' : ''}>
-            ${isRegen ? '⏳ Läuft...' : '🔄 Neu erstellen'}
+            ${isRegen ? '⏳ Läuft...' : '🔄 docx neu erstellen'}
           </button>
           <button class="btn btn-danger"
             onclick="deleteSession('${escHtml(s.session_id)}', this)">
@@ -891,7 +891,7 @@ function openRegenModal(sessionId) {
   document.getElementById('regen-extra').value = (s && s.extra_instruktionen) || '';
   const btn = document.getElementById('regen-submit-btn');
   btn.disabled = false;
-  btn.textContent = '🔄 Neu erstellen';
+  btn.textContent = '🔄 docx neu erstellen';
   document.getElementById('regen-modal').style.display = 'flex';
 }
 
@@ -919,7 +919,7 @@ async function submitRegen() {
   } catch(e) {
     toast('Fehler: ' + e.message, 'error');
     btn.disabled = false;
-    btn.textContent = '🔄 Neu erstellen';
+    btn.textContent = '🔄 docx neu erstellen';
   }
 }
 
