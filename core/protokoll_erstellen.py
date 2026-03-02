@@ -251,8 +251,7 @@ Antworte NUR mit folgendem JSON:
       "zusammenfassung": "Kurze einleitende Zusammenfassung (1-2 Sätze: wer hat was präsentiert)",
       "details": ["Einzelner Aufzählungspunkt", "Weiterer Punkt"],
       "beschluesse": ["Beschluss oder Aktionspunkt 1"],
-      "zeitraum": "00:00 - 08:30",
-      "segmente": ["[00:00 - 00:45] Relevanter Text"]
+      "zeitraum": "00:00 - 08:30"
     }}
   ]
 }}
@@ -272,13 +271,18 @@ Hinweise:
     )
 
     antwort = message.content[0].text.strip()
+    print(f"Claude Antwort ({len(antwort)} Zeichen, stop_reason={message.stop_reason}): {antwort[:300]}...")
     json_match = re.search(r'\{.*\}', antwort, re.DOTALL)
     if json_match:
         try:
             data = json.loads(json_match.group())
-            return data.get("agenda_punkte", [])
-        except (json.JSONDecodeError, KeyError):
-            pass
+            punkte = data.get("agenda_punkte", [])
+            print(f"JSON OK – {len(punkte)} Agenda-Punkte geparst.")
+            return punkte
+        except (json.JSONDecodeError, KeyError) as e:
+            print(f"JSON-Parse-Fehler: {e} – Antwort-Anfang: {antwort[:500]}")
+    else:
+        print(f"Kein JSON in Antwort gefunden. Antwort: {antwort[:500]}")
     return []
 
 
