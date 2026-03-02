@@ -226,6 +226,18 @@
       flex-shrink: 0;
     }
     .channel-reload:hover { color: var(--text); }
+
+    /* ── Regen Modal ──────────────────────────────── */
+    #regen-modal {
+      position: fixed; inset: 0; background: rgba(0,0,0,.55);
+      display: flex; align-items: center; justify-content: center; z-index: 200;
+    }
+    .modal-box {
+      background: var(--surface); border-radius: .75rem; padding: 1.5rem;
+      width: min(480px, 92vw); box-shadow: 0 8px 32px #0008;
+    }
+    .modal-box h3 { margin-bottom: .5rem; }
+    .btn-secondary { background: #1a365d; color: var(--blue); font-size: .78rem; padding: .3rem .7rem; }
   </style>
 </head>
 <body>
@@ -350,6 +362,20 @@
     </div>
   </div><!-- /tab-protokolle -->
 
+  <!-- Regen Modal -->
+  <div id="regen-modal" style="display:none" onclick="if(event.target===this)closeRegenModal()">
+    <div class="modal-box">
+      <h3>Protokoll neu erstellen</h3>
+      <p id="regen-session-label" style="color:var(--muted);margin-bottom:1rem;font-size:.85rem"></p>
+      <label style="display:block;font-size:.78rem;color:var(--muted);margin-bottom:.3rem">Zusätzliche Instruktionen (Prompt)</label>
+      <textarea id="regen-extra" rows="6" style="width:100%;margin:.5rem 0 1rem"></textarea>
+      <div class="btn-row">
+        <button class="btn btn-ghost" onclick="closeRegenModal()">Abbrechen</button>
+        <button class="btn btn-green" id="regen-submit-btn" onclick="submitRegen()">🔄 Neu erstellen</button>
+      </div>
+    </div>
+  </div>
+
   <div id="toast"></div>
 
 <script>
@@ -357,6 +383,9 @@ const LAST_CHANNEL_KEY = 'tsbot_last_channel_id';
 let _extraSaveTimer = null;
 let _channelNames = {};   // id → name, befüllt von loadChannels()
 let _currentState = 'IDLE';
+let _regenSessionId = null;
+const _regenInProgress = new Set();
+let _sessions = [];
 
 // ═══════════════════════════════════════════════════════════
 // Tabs
@@ -719,6 +748,7 @@ async function loadProtocols() {
 }
 
 function renderProtocols(sessions) {
+  _sessions = sessions;
   const ul = document.getElementById('protocol-list');
   if (!sessions.length) {
     ul.innerHTML = '<li><p class="empty-hint">Noch keine abgeschlossenen Sitzungen.</p></li>';
@@ -740,6 +770,7 @@ function renderProtocols(sessions) {
     ).join('');
 
     const allLinks = docLinks + txtLinks + audioLinks;
+    const isRegen  = _regenInProgress.has(s.session_id);
 
     li.innerHTML = `
       <div class="prot-header">
@@ -747,9 +778,19 @@ function renderProtocols(sessions) {
           <div class="prot-title">${escHtml(s.thema || '(kein Thema)')}</div>
           <div class="prot-meta">${escHtml(s.session_id)} · ${dateStr}</div>
         </div>
-        <button class="btn btn-danger" onclick="deleteSession('${escHtml(s.session_id)}', this)">
-          🗑 Löschen
-        </button>
+        <div style="display:flex;flex-direction:column;gap:.35rem;align-items:flex-end">
+          <button class="btn btn-secondary"
+            id="regen-btn-${escHtml(s.session_id)}"
+            data-session-id="${escHtml(s.session_id)}"
+            onclick="openRegenModal(this.dataset.sessionId)"
+            ${isRegen ? 'disabled' : ''}>
+            ${isRegen ? '⏳ Läuft...' : '🔄 Neu erstellen'}
+          </button>
+          <button class="btn btn-danger"
+            onclick="deleteSession('${escHtml(s.session_id)}', this)">
+            🗑 Löschen
+          </button>
+        </div>
       </div>
       <div class="prot-links">
         ${allLinks || '<span style="color:var(--muted);font-size:.78rem">Keine Dateien</span>'}
@@ -772,6 +813,70 @@ async function deleteSession(sessionId, btn) {
     btn.disabled = false;
     btn.textContent = '🗑 Löschen';
   }
+}
+
+// ═══════════════════════════════════════════════════════════
+// Protokoll-Neuerstellung
+// ═══════════════════════════════════════════════════════════
+function openRegenModal(sessionId) {
+  const s = _sessions.find(x => x.session_id === sessionId);
+  _regenSessionId = sessionId;
+  document.getElementById('regen-session-label').textContent =
+    (s && s.thema ? s.thema + ' · ' : '') + sessionId;
+  document.getElementById('regen-extra').value = (s && s.extra_instruktionen) || '';
+  const btn = document.getElementById('regen-submit-btn');
+  btn.disabled = false;
+  btn.textContent = '🔄 Neu erstellen';
+  document.getElementById('regen-modal').style.display = 'flex';
+}
+
+function closeRegenModal() {
+  document.getElementById('regen-modal').style.display = 'none';
+  _regenSessionId = null;
+}
+
+async function submitRegen() {
+  if (!_regenSessionId) return;
+  const extra = document.getElementById('regen-extra').value;
+  const btn = document.getElementById('regen-submit-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Läuft...';
+  try {
+    await api(`/protocols/${_regenSessionId}/regenerate`, {
+      method: 'POST',
+      body: JSON.stringify({ extra_instruktionen: extra }),
+    });
+    const sid = _regenSessionId;
+    _regenInProgress.add(sid);
+    closeRegenModal();
+    renderProtocols(_sessions);
+    _pollRegen(sid);
+  } catch(e) {
+    toast('Fehler: ' + e.message, 'error');
+    btn.disabled = false;
+    btn.textContent = '🔄 Neu erstellen';
+  }
+}
+
+function _pollRegen(sessionId) {
+  setTimeout(async () => {
+    try {
+      const d = await api(`/protocols/${sessionId}/regen-status`);
+      if (d.status === 'done') {
+        toast('Protokoll erfolgreich neu erstellt.', 'ok');
+        _regenInProgress.delete(sessionId);
+        loadProtocols();
+      } else if (d.status === 'error') {
+        toast('Fehler bei Neuerstellung: ' + (d.error || 'Unbekannter Fehler'), 'error');
+        _regenInProgress.delete(sessionId);
+        renderProtocols(_sessions);
+      } else {
+        _pollRegen(sessionId);
+      }
+    } catch(e) {
+      _pollRegen(sessionId);
+    }
+  }, 3000);
 }
 
 // ═══════════════════════════════════════════════════════════

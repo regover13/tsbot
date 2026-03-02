@@ -235,20 +235,6 @@ def ki_zuordnung(volltext: str, segmente: list, agenda: list, api_key: str, mode
                            + "\n".join(zeilen) + "\n"
 
     prompt = f"""Du bist ein professioneller Protokollschreiber. Analysiere das Transkript und weise jeden Abschnitt dem passenden Agenda-Punkt zu.
-
-WICHTIGE REGELN:
-- Verwende Namen und Kennzeichen EXAKT wie in der Teilnehmerliste angegeben
-- FRS-Kennzeichen (z.B. FRS49, FRS999N) NIEMALS ausschreiben oder übersetzen – sie bleiben unverändert
-- Buchstaben am Ende von FRS-Kennzeichen (z.B. das N in FRS999N) sind Teil des Kennzeichens, kein NATO-Alphabet
-- Verwechsle ähnliche Namen nicht (z.B. "Dobias" ≠ "Tobias")
-- Das Sprecher-Label im Format "[MM:SS - MM:SS] SPRECHER: text" ist AUTORITATIV – es zeigt wer gesprochen hat
-- Wenn ein Sprecher-Label "Dobias Weskly" anzeigt, hat Dobias Weskly gesprochen – auch wenn der Textinhalt einen anderen Namen erwähnt
-- Wer sich bei einer Vorstellungsrunde vorstellt, ist die Person laut Sprecher-Label, nicht der im Text genannte Name
-- Wer jemanden begrüßt, ist eine andere Person als diejenige, die sich vorstellt
-- Erfinde KEINE Informationen die nicht explizit im Transkript stehen – insbesondere keine Daten, Zahlen oder Alternativen (kein "bzw.", "oder", "ca." wenn nicht im Transkript)
-- Bei unklaren Angaben im Transkript: weglassen oder exakt das zitieren was gesagt wurde
-- Alle genannten Orte, Personen, Termine und Entscheidungen VOLLSTÄNDIG in die Zusammenfassung aufnehmen – nichts kürzen oder weglassen weil es "nebensächlich" wirkt
-- Verabschiedungen, Übergänge und Kanalwechsel-Ankündigungen im Transkript müssen im jeweiligen Agenda-Punkt erwähnt werden (z.B. "Tobias Wäschle verabschiedete die Teilnehmer und zog sich mit den Mitgliedern in den Staff-Kanal zurück")
 {teilnehmer_block}
 AGENDA:
 {agenda_text}
@@ -379,8 +365,12 @@ def erstelle_protokoll(transkript_pfad: str, thema: str,
     elif agenda:
         print("HINWEIS: Kein API-Key – Protokoll ohne KI-Zuordnung.")
 
-    # Ausgabe-Datei
-    zeitstempel   = datetime.now().strftime("%Y%m%d_%H%M")
+    # Ausgabe-Datei – Datum aus Session-Ordnernamen ableiten, nicht aus datetime.now()
+    session_folder_name = Path(ausgabe_ordner).name  # z.B. "20260301_200000"
+    try:
+        zeitstempel = session_folder_name[:13]  # "20260301_2000" = YYYYMMDD_HHMM
+    except Exception:
+        zeitstempel = datetime.now().strftime("%Y%m%d_%H%M")
     ausgabe_datei = os.path.join(ausgabe_ordner, f"Protokoll_{zeitstempel}.docx")
 
     doc = Document()

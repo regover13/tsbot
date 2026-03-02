@@ -19,8 +19,12 @@ Protokolle benötigen, ohne manuell mitschreiben zu müssen.**
   Programmpunkte) als Bullet-Liste aus
 - **Teilnehmer-Tracking** – Automatisch per TS3 ServerQuery; pro Kanal separate Teilnehmerliste im Protokoll
 - **Kanalwechsel** – Bot folgt dem Moderator in andere Kanäle, Kanalwechsel werden im Protokoll vermerkt
-- **Zusätzliche Instruktionen** – Freier Text direkt an Claude, z.B. *„Keine Transkript-Auszüge"* oder
-  *„ICAO-Codes ausschreiben"* — wird **server-seitig** gespeichert und gilt für alle Nutzer gleich
+- **Zusätzliche Instruktionen** – Freier Text direkt an Claude, z.B. *„ICAO-Codes ausschreiben"* oder
+  *„Sprecher-Labels sind autoritativ"* — wird **server-seitig** gespeichert und beim ersten Öffnen
+  mit sinnvollen Verhaltensregeln vorbelegt (editierbar im Browser)
+- **Protokoll neu erstellen** – Im Tab „Protokolle" kann jede Session per **🔄 Neu erstellen**-Button
+  erneut durch Claude geschickt werden, ohne neue Aufnahme oder Transkription. Die Instruktionen
+  lassen sich dabei sitzungsspezifisch anpassen; die geänderte Version überschreibt das alte `.docx`
 - **Web-Interface** – FastAPI-Dashboard zum Starten/Stoppen, Kanalauswahl, Agenda-Verwaltung, Protokoll-Download
 - **Docker + CI/CD** – Automatisches Deployment via GitHub Actions + Portainer bei jedem Push auf `master`
 - **Word-Protokoll (.docx)** – Mit Inhaltsverzeichnis, Metadaten, Teilnehmertabelle, Zeitangaben und
@@ -499,9 +503,14 @@ Dauerhafte Server-Agenda bearbeiten (wird für alle zukünftigen Sitzungen verwe
 ### Tab „Protokolle"
 
 Liste aller abgeschlossenen Sitzungen mit Download-Links für:
-- `Protokoll_YYYYMMDD_HHMM.docx` — Word-Protokoll
+- `Protokoll_YYYYMMDD_HHMM.docx` — Word-Protokoll (Dateiname basiert auf Session-Startzeit, nicht auf Generierungszeit)
 - `*_transkript_*.txt` — Volltranskript mit Zeitstempeln
 - `audio.mp3` — Original-Aufnahme
+
+**🔄 Neu erstellen** öffnet ein Modal mit den gespeicherten Instruktionen dieser Session.
+Nach Anpassung und Bestätigung wird Claude das Protokoll neu generieren – ohne neue Aufnahme
+oder Transkription. Transkript, Teilnehmer und Agenda bleiben erhalten; das bestehende `.docx`
+wird überschrieben. Der Button wechselt zu „⏳ Läuft..." bis der Vorgang abgeschlossen ist.
 
 Über den **🗑 Löschen**-Button wird eine komplette Session unwiderruflich entfernt
 (Audio, Transkript, Protokoll und Metadaten).
