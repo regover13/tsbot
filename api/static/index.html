@@ -308,7 +308,13 @@
         <textarea id="f-extra" rows="12"
           placeholder="z.B.: Schreibe Beschlüsse besonders hervor. Ignoriere Small Talk. Verwende förmliche Sprache."
           oninput="saveExtra()"></textarea>
-        <p class="hint">Optionaler Freitext – wird direkt an Claude angehängt.</p>
+        <p class="hint" style="display:flex;justify-content:space-between;align-items:center;margin-top:.4rem">
+          <span>Wird server-seitig gespeichert und direkt an Claude angehängt.</span>
+          <span style="display:flex;gap:.4rem;flex-shrink:0;margin-left:.5rem">
+            <button class="btn btn-ghost" style="font-size:.75rem;padding:.2rem .6rem" onclick="openDefaultModal()">✏ Standard</button>
+            <button class="btn btn-ghost" style="font-size:.75rem;padding:.2rem .6rem" onclick="resetExtraToDefault()">↺ Zurücksetzen</button>
+          </span>
+        </p>
       </div>
 
       <div class="btn-row">
@@ -361,6 +367,22 @@
       </ul>
     </div>
   </div><!-- /tab-protokolle -->
+
+  <!-- Standard-Vorlage Modal -->
+  <div id="default-modal" style="display:none" onclick="if(event.target===this)closeDefaultModal()">
+    <div class="modal-box">
+      <h3>Standard-Vorlage bearbeiten</h3>
+      <p style="color:var(--muted);font-size:.85rem;margin-bottom:1rem">
+        Diese Vorlage wird beim <strong>↺ Zurücksetzen</strong> wiederhergestellt.<br>
+        Änderungen erfordern eine Bestätigung.
+      </p>
+      <textarea id="default-extra" rows="14" style="width:100%;margin:.5rem 0 1rem"></textarea>
+      <div class="btn-row">
+        <button class="btn btn-ghost" onclick="closeDefaultModal()">Abbrechen</button>
+        <button class="btn btn-green" id="default-save-btn" onclick="saveDefaultExtra()">💾 Standard speichern</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Regen Modal -->
   <div id="regen-modal" style="display:none" onclick="if(event.target===this)closeRegenModal()">
@@ -486,6 +508,49 @@ async function loadExtra() {
     document.getElementById('f-extra').value = d.text || '';
   } catch(e) {
     // nicht kritisch, still ignorieren
+  }
+}
+
+async function resetExtraToDefault() {
+  if (!confirm('Aktuelle Instruktionen mit der Standard-Vorlage überschreiben?')) return;
+  try {
+    const d = await api('/settings/extra/default');
+    const ta = document.getElementById('f-extra');
+    ta.value = d.text || '';
+    await api('/settings/extra', { method: 'PUT', body: JSON.stringify({ text: ta.value }) });
+    toast('Auf Standard zurückgesetzt.', 'ok');
+  } catch(e) {
+    toast('Fehler: ' + e.message, 'error');
+  }
+}
+
+async function openDefaultModal() {
+  try {
+    const d = await api('/settings/extra/default');
+    document.getElementById('default-extra').value = d.text || '';
+    document.getElementById('default-save-btn').disabled = false;
+    document.getElementById('default-modal').style.display = 'flex';
+  } catch(e) {
+    toast('Fehler: ' + e.message, 'error');
+  }
+}
+
+function closeDefaultModal() {
+  document.getElementById('default-modal').style.display = 'none';
+}
+
+async function saveDefaultExtra() {
+  if (!confirm('Standard-Vorlage wirklich überschreiben?\n\nDer ↺-Reset gilt danach für alle Nutzer mit dem neuen Text.')) return;
+  const text = document.getElementById('default-extra').value;
+  const btn  = document.getElementById('default-save-btn');
+  btn.disabled = true;
+  try {
+    await api('/settings/extra/default', { method: 'PUT', body: JSON.stringify({ text }) });
+    closeDefaultModal();
+    toast('Standard-Vorlage gespeichert.', 'ok');
+  } catch(e) {
+    toast('Fehler: ' + e.message, 'error');
+    btn.disabled = false;
   }
 }
 

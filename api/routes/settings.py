@@ -1,7 +1,11 @@
 """
-Settings-Endpoints: GET /settings/extra, PUT /settings/extra
+Settings-Endpoints: GET/PUT /settings/extra, GET/PUT /settings/extra/default
 
-Speichert server-seitige Einstellungen, die für alle Nutzer gleich gelten.
+Zweistufiges System:
+  extra_instruktionen.txt         → aktuelle Instruktionen (auto-saved aus Textarea)
+  extra_instruktionen_default.txt → Standard-Vorlage (editierbar über Modal + Confirm)
+
+Der Factory-Fallback DEFAULT_INSTRUKTIONEN greift nur wenn noch keine Default-Datei existiert.
 """
 
 import os
@@ -12,7 +16,10 @@ from pydantic import BaseModel
 
 router = APIRouter()
 
-EXTRA_PATH = Path(os.environ.get("EXTRA_INSTRUKTIONEN_PATH", "/opt/tsbot/data/extra_instruktionen.txt"))
+EXTRA_PATH   = Path(os.environ.get("EXTRA_INSTRUKTIONEN_PATH",
+                                   "/opt/tsbot/data/extra_instruktionen.txt"))
+DEFAULT_PATH = Path(os.environ.get("DEFAULT_INSTRUKTIONEN_PATH",
+                                   "/opt/tsbot/data/extra_instruktionen_default.txt"))
 
 DEFAULT_INSTRUKTIONEN = """\
 VERHALTENSREGELN:
@@ -41,19 +48,48 @@ class ExtraBody(BaseModel):
     text: str
 
 
-@router.get("/extra", summary="Zusätzliche Protokoll-Instruktionen laden")
+def _get_default_text() -> str:
+    """Gibt die gespeicherte Standard-Vorlage zurück, oder den Factory-Default."""
+    if DEFAULT_PATH.exists():
+        content = DEFAULT_PATH.read_text(encoding="utf-8")
+        if content.strip():
+            return content
+    return DEFAULT_INSTRUKTIONEN
+
+
+# ── Aktuelle Instruktionen ─────────────────────────────────
+
+@router.get("/extra", summary="Aktuelle Protokoll-Instruktionen laden")
 async def get_extra():
-    """Gibt die gespeicherten Zusatz-Instruktionen zurück (Default wenn nicht vorhanden oder leer)."""
+    """Gibt die aktuellen Instruktionen zurück.
+    Liefert den Standard wenn Datei fehlt, leer ist oder noch alten Inhalt hat
+    (erkennbar am fehlenden 'VERHALTENSREGELN:'-Block)."""
     if EXTRA_PATH.exists():
         content = EXTRA_PATH.read_text(encoding="utf-8")
-        if content.strip():
+        if content.strip() and "VERHALTENSREGELN:" in content:
             return {"text": content}
-    return {"text": DEFAULT_INSTRUKTIONEN}
+    return {"text": _get_default_text()}
 
 
-@router.put("/extra", summary="Zusätzliche Protokoll-Instruktionen speichern")
+@router.put("/extra", summary="Aktuelle Protokoll-Instruktionen speichern")
 async def put_extra(body: ExtraBody):
-    """Speichert die Zusatz-Instruktionen server-seitig (gilt für alle Nutzer)."""
+    """Speichert die aktuellen Instruktionen (gilt für alle neuen Sessions)."""
     EXTRA_PATH.parent.mkdir(parents=True, exist_ok=True)
     EXTRA_PATH.write_text(body.text, encoding="utf-8")
     return {"message": "Instruktionen gespeichert.", "text": body.text}
+
+
+# ── Standard-Vorlage ──────────────────────────────────────
+
+@router.get("/extra/default", summary="Standard-Vorlage laden")
+async def get_extra_default():
+    """Gibt die Standard-Vorlage zurück (für ↺-Reset und Modal)."""
+    return {"text": _get_default_text()}
+
+
+@router.put("/extra/default", summary="Standard-Vorlage speichern")
+async def put_extra_default(body: ExtraBody):
+    """Überschreibt die Standard-Vorlage (geschützte Operation)."""
+    DEFAULT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    DEFAULT_PATH.write_text(body.text, encoding="utf-8")
+    return {"message": "Standard-Vorlage gespeichert.", "text": body.text}

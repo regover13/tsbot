@@ -19,9 +19,9 @@ Protokolle benötigen, ohne manuell mitschreiben zu müssen.**
   Programmpunkte) als Bullet-Liste aus
 - **Teilnehmer-Tracking** – Automatisch per TS3 ServerQuery; pro Kanal separate Teilnehmerliste im Protokoll
 - **Kanalwechsel** – Bot folgt dem Moderator in andere Kanäle, Kanalwechsel werden im Protokoll vermerkt
-- **Zusätzliche Instruktionen** – Freier Text direkt an Claude, z.B. *„ICAO-Codes ausschreiben"* oder
-  *„Sprecher-Labels sind autoritativ"* — wird **server-seitig** gespeichert und beim ersten Öffnen
-  mit sinnvollen Verhaltensregeln vorbelegt (editierbar im Browser)
+- **Zusätzliche Instruktionen** – Freier Text direkt an Claude; wird **server-seitig** gespeichert
+  und beim ersten Öffnen mit sinnvollen Verhaltensregeln vorbelegt. Zweistufiges System:
+  aktuelle Instruktionen (auto-saved) + editierbare Standard-Vorlage (geschützt per Confirm-Dialog)
 - **Protokoll neu erstellen** – Im Tab „Protokolle" kann jede Session per **🔄 Neu erstellen**-Button
   erneut durch Claude geschickt werden, ohne neue Aufnahme oder Transkription. Die Instruktionen
   lassen sich dabei sitzungsspezifisch anpassen; die geänderte Version überschreibt das alte `.docx`
@@ -465,9 +465,13 @@ Erreichbar unter `https://tsbot.devprops.de` (Login mit `API_USER` / `API_SECRET
    Das Dropdown lädt alle Kanäle live vom Server. Der zuletzt verwendete Kanal wird
    automatisch vorausgewählt (im Browser-LocalStorage gespeichert).
 3. **Agenda** leer lassen = Server-Agenda wird verwendet; oder für diese Sitzung überschreiben
-4. **Zusätzliche Instruktionen** optional — freier Text, der direkt an Claude angehängt wird.
-   Wird server-seitig in `data/extra_instruktionen.txt` gespeichert und erscheint bei allen Nutzern gleich.
-   Beispiele: *„Schreibe Beschlüsse besonders hervor."* / *„Ignoriere Small Talk."*
+4. **Zusätzliche Instruktionen** — freier Text, der direkt an Claude angehängt wird.
+   Beim ersten Öffnen mit Verhaltensregeln vorbelegt (Umlaut-Matching, Sprecher-Labels, ICAO-Codes, …).
+   Zweistufiges System:
+   - **Textarea** (auto-saved nach jeder Eingabe) → `data/extra_instruktionen.txt`
+   - **✏ Standard** öffnet die editierbare Standard-Vorlage (`data/extra_instruktionen_default.txt`);
+     Speichern erfordert Bestätigung — schützt vor versehentlichem Überschreiben
+   - **↺ Zurücksetzen** kopiert die Standard-Vorlage in die aktuelle Textarea (mit Bestätigung)
 5. **▶ Aufnahme starten** → Bot verbindet sich mit TS3, tritt dem Kanal bei,
    Aufnahme und Teilnehmer-Tracking starten automatisch
 6. **Kanalwechsel** — über das Dropdown während der Aufnahme möglich. Der Bot wechselt
