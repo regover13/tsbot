@@ -834,7 +834,23 @@ function dragDrop(e)  {
 async function loadProtocols() {
   try {
     const d = await api('/protocols/');
-    renderProtocols(d.sessions || []);
+    const sessions = d.sessions || [];
+
+    // Nach Seiten-Reload: laufende Regens vom Server wiederherstellen
+    const statusChecks = sessions.map(s =>
+      api(`/protocols/${s.session_id}/regen-status`)
+        .then(r => ({ sid: s.session_id, status: r.status }))
+        .catch(() => ({ sid: s.session_id, status: 'idle' }))
+    );
+    const statuses = await Promise.all(statusChecks);
+    statuses.forEach(({ sid, status }) => {
+      if (status === 'running' && !_regenInProgress.has(sid)) {
+        _regenInProgress.add(sid);
+        _pollRegen(sid);
+      }
+    });
+
+    renderProtocols(sessions);
   } catch(e) { /* silent */ }
 }
 
