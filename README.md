@@ -515,6 +515,8 @@ Liste aller abgeschlossenen Sitzungen mit Download-Links für:
 Nach Anpassung und Bestätigung wird Claude das Protokoll neu generieren – ohne neue Aufnahme
 oder Transkription. Transkript, Teilnehmer und Agenda bleiben erhalten; das bestehende `.docx`
 wird überschrieben. Der Button wechselt zu „⏳ Läuft..." bis der Vorgang abgeschlossen ist.
+Im Modal ist **↺ Standard** verfügbar: lädt die globale Standard-Vorlage in die Textarea,
+ohne die gespeicherten Session-Instruktionen zu überschreiben.
 
 Über den **🗑 Löschen**-Button wird eine komplette Session unwiderruflich entfernt
 (Audio, Transkript, Protokoll und Metadaten).

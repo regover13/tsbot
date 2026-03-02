@@ -389,7 +389,10 @@
     <div class="modal-box">
       <h3>Protokoll neu erstellen</h3>
       <p id="regen-session-label" style="color:var(--muted);margin-bottom:1rem;font-size:.85rem"></p>
-      <label style="display:block;font-size:.78rem;color:var(--muted);margin-bottom:.3rem">Zusätzliche Instruktionen (Prompt)</label>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.3rem">
+        <label style="font-size:.78rem;color:var(--muted)">Zusätzliche Instruktionen (Prompt)</label>
+        <button class="btn btn-ghost" style="font-size:.75rem;padding:.2rem .6rem" onclick="resetRegenExtraToDefault()">↺ Standard</button>
+      </div>
       <textarea id="regen-extra" rows="6" style="width:100%;margin:.5rem 0 1rem"></textarea>
       <div class="btn-row">
         <button class="btn btn-ghost" onclick="closeRegenModal()">Abbrechen</button>
@@ -898,6 +901,15 @@ function openRegenModal(sessionId) {
 function closeRegenModal() {
   document.getElementById('regen-modal').style.display = 'none';
   _regenSessionId = null;
+}
+
+async function resetRegenExtraToDefault() {
+  try {
+    const d = await api('/settings/extra/default');
+    document.getElementById('regen-extra').value = d.text || '';
+  } catch (e) {
+    showToast('Fehler beim Laden der Standard-Vorlage', 'error');
+  }
 }
 
 async function submitRegen() {
