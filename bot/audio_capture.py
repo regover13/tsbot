@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """
-Audio-Aufnahme über PulseAudio Null-Sink.
+Segmentierte Audio-Aufnahme über PulseAudio Null-Sink.
 
-Nutzt ffmpeg mit PulseAudio-Backend, um den tsbot_sink.monitor
-(Loopback der TeamSpeak-Audioausgabe) als MP3 aufzuzeichnen.
+Nimmt in rollierenden Segmenten auf (audio_001.mp3, audio_002.mp3, …).
+Ein Watchdog erkennt eingefrorene ffmpeg-Prozesse und rotiert automatisch
+auf ein neues Segment.
 """
 
 import os
+import asyncio
 import logging
 import subprocess
 from pathlib import Path
@@ -16,20 +18,139 @@ logger = logging.getLogger(__name__)
 # Standard-Sink aus Umgebungsvariable oder Fallback
 DEFAULT_SINK = os.environ.get("PULSE_SINK", "tsbot_sink")
 
+# Standard-Segment-Dauer in Sekunden (10 Minuten)
+DEFAULT_SEGMENT_DURATION = int(os.environ.get("SEGMENT_DURATION", "600"))
 
-class AudioCapture:
-    """Startet und stoppt eine ffmpeg-Aufnahme vom PulseAudio-Monitor."""
 
-    def __init__(self, output_path: Path, sink_name: str = None):
-        self._output_path = Path(output_path)
-        self._sink_name   = sink_name or DEFAULT_SINK
-        self._process: subprocess.Popen | None = None
+class SegmentedAudioCapture:
+    """
+    Startet und verwaltet eine segmentierte ffmpeg-Aufnahme vom PulseAudio-Monitor.
+
+    Segmente: audio_001.mp3, audio_002.mp3, …
+    Rotation:  planmäßig alle `segment_duration` Sekunden + Freeze-Watchdog (60s).
+    Overlap:   1,5 s – neues Segment startet vor Stop des alten → kein Gap.
+    """
+
+    def __init__(self, session_dir: Path, segment_duration: int = None, sink_name: str = None):
+        self._session_dir      = Path(session_dir)
+        self._segment_duration = segment_duration or DEFAULT_SEGMENT_DURATION
+        self._sink_name        = sink_name or DEFAULT_SINK
+
+        self._segment_index    = 0           # zuletzt gestarteter Index (1-basiert)
+        self._current_process: subprocess.Popen | None = None
+        self._current_path:    Path | None = None
+
+        self._completed_segments: list[Path] = []
+
+        self._watchdog_task: asyncio.Task | None = None
+        self._rotate_task:   asyncio.Task | None = None
+        self._freeze_callback = None
+        self._rotating        = False        # verhindert gleichzeitige Rotationen
 
     # ── Öffentliche API ───────────────────────────────────────
 
-    def start(self):
-        """Startet die Aufnahme. Wirft RuntimeError, wenn ffmpeg fehlt oder der Sink nicht existiert."""
+    async def start(self, freeze_callback=None) -> None:
+        """Startet erstes Segment, Watchdog und Rotations-Timer."""
         self._prüfe_sink()
+        self._freeze_callback = freeze_callback
+        self._session_dir.mkdir(parents=True, exist_ok=True)
+        self._start_new_segment()
+        self._watchdog_task = asyncio.create_task(self._watchdog_loop())
+        self._rotate_task   = asyncio.create_task(self._rotation_loop())
+
+    async def stop(self) -> list[Path]:
+        """
+        Stoppt alle Tasks und finalisiert das laufende Segment.
+        Gibt alle abgeschlossenen Segment-Pfade zurück.
+        """
+        # Tasks abbrechen
+        for task in (self._watchdog_task, self._rotate_task):
+            if task and not task.done():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+        self._watchdog_task = None
+        self._rotate_task   = None
+
+        # Aktuelles Segment finalisieren
+        if self._current_process:
+            path = self._stop_process(self._current_process, self._current_path)
+            if path:
+                self._completed_segments.append(path)
+                logger.info("Letztes Segment abgeschlossen: %s (%.1f MB)",
+                            path.name, path.stat().st_size / 1_048_576)
+            self._current_process = None
+            self._current_path    = None
+
+        return list(self._completed_segments)
+
+    async def rotate_segment(self, reason: str = "planmäßig") -> None:
+        """
+        Rotiert auf ein neues Segment mit 1,5 s Überlappung:
+        1. Neues ffmpeg starten
+        2. 1,5 Sekunden warten (beide Prozesse laufen)
+        3. Altes ffmpeg stoppen und als abgeschlossen registrieren
+        """
+        if self._rotating:
+            logger.debug("Rotation bereits aktiv – überspringe.")
+            return
+        self._rotating = True
+        try:
+            logger.info("Segment-Rotation (%s): starte audio_%03d.mp3",
+                        reason, self._segment_index + 1)
+
+            # Alten Prozess merken
+            old_process = self._current_process
+            old_path    = self._current_path
+
+            # Neues Segment sofort starten
+            self._start_new_segment()
+
+            # 1,5 s Overlap – beide Prozesse laufen gleichzeitig → kein Gap
+            await asyncio.sleep(1.5)
+
+            # Altes Segment beenden und speichern
+            if old_process:
+                path = self._stop_process(old_process, old_path)
+                if path:
+                    self._completed_segments.append(path)
+                    logger.info("Segment %s abgeschlossen (%.1f MB).",
+                                path.name, path.stat().st_size / 1_048_576)
+        finally:
+            self._rotating = False
+
+    # ── Eigenschaften ─────────────────────────────────────────
+
+    @property
+    def is_recording(self) -> bool:
+        return (self._current_process is not None
+                and self._current_process.poll() is None)
+
+    @property
+    def segment_count(self) -> int:
+        """Anzahl abgeschlossener Segmente."""
+        return len(self._completed_segments)
+
+    @property
+    def current_segment_nr(self) -> int:
+        """Nummer des aktuell laufenden Segments (1-basiert)."""
+        return self._segment_index
+
+    @property
+    def current_segment_size_mb(self) -> float:
+        """Dateigröße des aktuellen Segments in MB."""
+        if self._current_path and self._current_path.exists():
+            return self._current_path.stat().st_size / 1_048_576
+        return 0.0
+
+    # ── Interne Methoden ──────────────────────────────────────
+
+    def _start_new_segment(self) -> None:
+        """Startet einen neuen ffmpeg-Prozess für das nächste Segment."""
+        self._segment_index += 1
+        path = self._session_dir / f"audio_{self._segment_index:03d}.mp3"
 
         cmd = [
             "ffmpeg",
@@ -37,62 +158,90 @@ class AudioCapture:
             "-i", f"{self._sink_name}.monitor",
             "-acodec", "libmp3lame",
             "-ab", "64k",
-            "-y",                          # Ausgabedatei überschreiben
-            str(self._output_path),
+            "-y",
+            str(path),
         ]
-        logger.info("Starte Aufnahme: %s", " ".join(cmd))
+        logger.info("Starte Segment %03d → %s", self._segment_index, path.name)
 
-        self._output_path.parent.mkdir(parents=True, exist_ok=True)
-        self._process = subprocess.Popen(
+        process = subprocess.Popen(
             cmd,
             stdin=subprocess.PIPE,
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,  # PIPE würde den 64KB-Buffer in ~21 min füllen (ffmpeg 7.x)
+            stderr=subprocess.DEVNULL,
         )
-        logger.info("Aufnahme läuft (PID %d) → %s", self._process.pid, self._output_path)
+        self._current_process = process
+        self._current_path    = path
+        logger.info("Segment %03d läuft (PID %d)", self._segment_index, process.pid)
 
-    def stop(self) -> Path:
+    def _stop_process(self, process: subprocess.Popen,
+                      path: Path | None) -> Path | None:
         """
-        Stoppt die Aufnahme sauber über ffmpeg's 'q'-Befehl.
-        Gibt den Pfad zur erzeugten MP3-Datei zurück.
+        Stoppt einen ffmpeg-Prozess sauber über stdin 'q'.
+        Gibt den Pfad zurück wenn die Datei existiert und nicht leer ist.
         """
-        if self._process is None:
-            raise RuntimeError("Aufnahme läuft nicht.")
-
-        logger.info("Stoppe Aufnahme (sende 'q' an ffmpeg)...")
         try:
-            self._process.stdin.write(b"q\n")
-            self._process.stdin.flush()
-            self._process.wait(timeout=30)
+            process.stdin.write(b"q\n")
+            process.stdin.flush()
+            process.wait(timeout=30)
         except subprocess.TimeoutExpired:
-            logger.warning("ffmpeg reagiert nicht – erzwinge Beendigung.")
-            self._process.kill()
-            self._process.wait()
-        except BrokenPipeError:
-            # ffmpeg kann bereits beendet sein
-            pass
-        finally:
-            self._process = None
+            logger.warning("ffmpeg (PID %d) reagiert nicht – erzwinge Beendigung.",
+                           process.pid)
+            process.kill()
+            process.wait()
+        except (BrokenPipeError, OSError):
+            pass  # Prozess bereits beendet
 
-        if not self._output_path.exists():
-            raise RuntimeError(f"Ausgabedatei nicht erzeugt: {self._output_path}")
+        if path and path.exists() and path.stat().st_size > 0:
+            return path
+        logger.warning("Segment-Datei fehlt oder leer: %s", path)
+        return None
 
-        logger.info("Aufnahme beendet → %s (%.1f MB)",
-                    self._output_path,
-                    self._output_path.stat().st_size / 1_048_576)
-        return self._output_path
+    async def _watchdog_loop(self) -> None:
+        """
+        Alle 30 s Dateigröße des aktuellen Segments prüfen.
+        Nach 60 s ohne Wachstum (2 aufeinanderfolgende Prüfungen) → Freeze erkannt
+        → Segment rotieren + freeze_callback aufrufen.
+        """
+        last_size    = -1
+        frozen_count = 0
 
-    @property
-    def is_recording(self) -> bool:
-        return self._process is not None and self._process.poll() is None
+        while True:
+            await asyncio.sleep(30)
 
-    # ── Interne Methoden ──────────────────────────────────────
+            if not self._current_path or not self._current_path.exists():
+                last_size    = -1
+                frozen_count = 0
+                continue
 
-    def _prüfe_sink(self):
-        """Prüft, ob der konfigurierte PulseAudio-Sink existiert."""
+            size = self._current_path.stat().st_size
+            if size == last_size and last_size >= 0:
+                frozen_count += 1
+                logger.warning(
+                    "Watchdog: %s nicht gewachsen (%d/2), Größe=%d B",
+                    self._current_path.name, frozen_count, size,
+                )
+                if frozen_count >= 2:
+                    logger.warning("Freeze erkannt – rotiere Segment automatisch.")
+                    if self._freeze_callback:
+                        asyncio.create_task(self._freeze_callback())
+                    await self.rotate_segment("freeze")
+                    frozen_count = 0
+                    last_size    = -1
+            else:
+                last_size    = size
+                frozen_count = 0
+
+    async def _rotation_loop(self) -> None:
+        """Planmäßige Rotation alle segment_duration Sekunden."""
+        while True:
+            await asyncio.sleep(self._segment_duration)
+            await self.rotate_segment("planmäßig")
+
+    def _prüfe_sink(self) -> None:
+        """Prüft ob der konfigurierte PulseAudio-Sink existiert."""
         result = subprocess.run(
             ["pactl", "list", "sinks", "short"],
-            capture_output=True, text=True
+            capture_output=True, text=True,
         )
         if self._sink_name not in result.stdout:
             raise RuntimeError(

@@ -48,7 +48,10 @@ async def list_protocols():
 
         docx_files = sorted(session_dir.glob("Protokoll_*.docx"))
         transcript_files = sorted(session_dir.glob("*_transkript_*.txt"))
-        audio_files = sorted(session_dir.glob("audio.*"))
+        # Segmentierte Aufnahmen (audio_001.mp3, …) + Fallback für alte Sessions (audio.mp3)
+        audio_files = sorted(session_dir.glob("audio_*.mp3"))
+        if not audio_files:
+            audio_files = sorted(session_dir.glob("audio.mp3"))
 
         result.append({
             "session_id":          session_dir.name,

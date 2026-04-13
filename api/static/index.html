@@ -272,6 +272,10 @@
         <div class="meta-item"><label>Session-ID</label><span id="m-session">—</span></div>
         <div class="meta-item"><label>Thema</label><span id="m-thema">—</span></div>
         <div class="meta-item"><label>Dauer</label><span id="m-dauer">—</span></div>
+        <div class="meta-item" id="m-segment-item" style="display:none">
+          <label>Segment</label>
+          <span id="m-segment">—</span>
+        </div>
         <div class="meta-item"><label>Teilnehmer (live)</label><span id="m-teilnehmer">—</span></div>
         <div class="meta-item" id="m-channel-item" style="display:none">
           <label>Aktueller Kanal</label><span id="m-channel">—</span>
@@ -282,6 +286,9 @@
         <div id="bg-pipelines-list"></div>
       </div>
       <p id="error-line" class="error-line"></p>
+      <p id="freeze-line" class="error-line" style="display:none; color:var(--yellow, #f6c90e);">
+        ⚠ Freeze erkannt – Segment wurde automatisch neu gestartet.
+      </p>
     </div>
 
     <!-- Steuerung -->
@@ -672,6 +679,20 @@ function applyStatus(s) {
       String(m).padStart(2,'0') + ':' + String(sec).padStart(2,'0');
   } else {
     document.getElementById('m-dauer').textContent = '—';
+  }
+
+  // Segment-Info (nur während Aufnahme)
+  const segItem = document.getElementById('m-segment-item');
+  const freezeLine = document.getElementById('freeze-line');
+  if (isRec && s.segments) {
+    const seg = s.segments;
+    document.getElementById('m-segment').textContent =
+      `${seg.current_nr} (${seg.current_size_mb.toFixed(1)} MB) · ${seg.completed} abgeschlossen`;
+    segItem.style.display = 'block';
+    freezeLine.style.display = seg.freeze_warning ? 'block' : 'none';
+  } else {
+    segItem.style.display = 'none';
+    freezeLine.style.display = 'none';
   }
 
   // Aktueller Kanal (nur während Aufnahme)

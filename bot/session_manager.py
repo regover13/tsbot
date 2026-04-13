@@ -17,7 +17,7 @@ from enum import Enum
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 
-from bot.audio_capture import AudioCapture
+from bot.audio_capture import SegmentedAudioCapture
 from bot.ts_query import TSQueryTracker
 from bot.ts_client_control import TSClientControl, TSClientMonitor
 
@@ -49,8 +49,9 @@ class SessionManager:
         self.thema:      str      = ""
         self.started_at: datetime | None = None
         self.error_msg:  str | None = None
+        self.freeze_warning: bool = False
 
-        self._audio:     AudioCapture | None    = None
+        self._audio:     SegmentedAudioCapture | None = None
         self._tracker:   TSQueryTracker | None  = None
         self._ts_client: TSClientControl | None = None
         self._monitor:   TSClientMonitor | None = None
@@ -147,11 +148,10 @@ class SessionManager:
             logger.warning("ServerQuery nicht verfügbar: %s – Tracker deaktiviert.", e)
             self._tracker = None
 
-        # Audio-Aufnahme starten (Zeitpunkt als Referenz für Talk-Log)
+        # Audio-Aufnahme starten (segmentiert)
         recording_start = time.time()
-        audio_path = self.session_dir / "audio.mp3"
-        self._audio = AudioCapture(audio_path)
-        self._audio.start()
+        self._audio = SegmentedAudioCapture(self.session_dir)
+        await self._audio.start(freeze_callback=self._on_freeze)
 
         # recording_start an Monitor weitergeben (nachträglich setzen, da Monitor schon läuft)
         if self._monitor:
@@ -178,8 +178,8 @@ class SessionManager:
             self._monitor.stop()
             self._monitor = None
 
-        # Audio stoppen
-        audio_path = self._audio.stop()
+        # Audio stoppen (alle Segmente einsammeln)
+        audio_paths = await self._audio.stop()
 
         # Teilnehmer pro Kanal speichern
         participants = []
@@ -243,7 +243,7 @@ class SessionManager:
 
         # Verarbeitung im Hintergrund (Snapshot übergeben, damit _reset() die Pipeline nicht korrumpiert)
         asyncio.create_task(self._verarbeitungs_pipeline(
-            audio_path, participants,
+            audio_paths, participants,
             session_id=self.session_id,
             session_dir=self.session_dir,
         ))
@@ -289,6 +289,15 @@ class SessionManager:
             and sid != self.session_id  # aktuelle Session nicht doppelt anzeigen
         ]
 
+        segments = None
+        if self.state == State.RECORDING and self._audio:
+            segments = {
+                "completed":        self._audio.segment_count,
+                "current_nr":       self._audio.current_segment_nr,
+                "current_size_mb":  round(self._audio.current_segment_size_mb, 1),
+                "freeze_warning":   self.freeze_warning,
+            }
+
         return {
             "state":                self.state,
             "session_id":           self.session_id,
@@ -300,6 +309,7 @@ class SessionManager:
             "channel_events":       list(self._channel_events),
             "error":                self.error_msg,
             "background_pipelines": background,
+            "segments":             segments,
         }
 
     # ── Kick / Move Callbacks (aus Monitor-Thread) ─────────────
@@ -323,6 +333,11 @@ class SessionManager:
             asyncio.run_coroutine_threadsafe(
                 self._handle_channel_move(new_channel_id), self._loop
             )
+
+    async def _on_freeze(self):
+        """Callback vom Watchdog: ffmpeg-Freeze erkannt, neues Segment gestartet."""
+        self.freeze_warning = True
+        logger.warning("Freeze-Callback: Segment automatisch rotiert.")
 
     async def _auto_stop(self):
         """Stoppt die Session automatisch nach einem Kick."""
@@ -412,7 +427,7 @@ class SessionManager:
 
     # ── Interne Pipeline ──────────────────────────────────────
 
-    async def _verarbeitungs_pipeline(self, audio_path: Path, participants: list,
+    async def _verarbeitungs_pipeline(self, audio_paths: list[Path], participants: list,
                                        *, session_id: str, session_dir: Path):
         """Transkription → Protokollerstellung (läuft als asyncio Task).
 
@@ -437,7 +452,7 @@ class SessionManager:
             transcript_path = await loop.run_in_executor(
                 self._executor,
                 self._transkribiere_sync,
-                audio_path,
+                audio_paths,
                 session_dir,
             )
 
@@ -487,13 +502,16 @@ class SessionManager:
                 self.error_msg = str(e)
             _set_state(State.ERROR)
 
-    def _transkribiere_sync(self, audio_path: Path, session_dir: Path) -> Path:
+    def _transkribiere_sync(self, audio_paths: list[Path], session_dir: Path) -> Path:
         """Synchroner Whisper-Aufruf (läuft im ThreadPoolExecutor)."""
         import sys
         sys.path.insert(0, str(Path(__file__).parent.parent / "core"))
-        from transkribieren import transkribiere
+        from transkribieren import transkribiere_mehrere
 
-        result = transkribiere(str(audio_path), str(session_dir))
+        result = transkribiere_mehrere(
+            [str(p) for p in sorted(audio_paths)],
+            str(session_dir),
+        )
         return Path(result)
 
     def _annotate_speakers_sync(self, transcript_path: Path, talk_log_path: Path) -> Path:
@@ -562,6 +580,7 @@ class SessionManager:
         self.thema               = ""
         self.started_at          = None
         self.error_msg           = None
+        self.freeze_warning      = False
         self._audio              = None
         self._tracker            = None
         self._ts_client          = None

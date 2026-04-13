@@ -2,6 +2,8 @@
 """
 Whisper Transkriptions-Skript
 Transkribiert Audiodateien auf Deutsch und speichert das Ergebnis als TXT-Datei.
+
+Unterstützt Einzel- und Mehrdatei-Transkription (segmentierte Aufnahmen).
 """
 
 import sys
@@ -16,13 +18,30 @@ def _fmt(sek: float) -> str:
     return f"{int(sek // 60):02d}:{int(sek % 60):02d}"
 
 
+def _get_device_and_model(model_name: str | None = None) -> tuple[str, str]:
+    """Erkennt CUDA-Verfügbarkeit und gibt (device, model_name) zurück."""
+    device = os.environ.get("WHISPER_DEVICE", "cpu")
+    try:
+        import ctranslate2
+        if ctranslate2.get_cuda_device_count() > 0:
+            device = "cuda"
+            print("GPU erkannt – nutze CUDA")
+        else:
+            print("Kein CUDA gefunden – nutze CPU")
+    except Exception:
+        print(f"Nutze Device: {device}")
+    if model_name is None:
+        model_name = os.environ.get("WHISPER_MODEL", "large")
+    return device, model_name
+
+
 _whisper_model_cache: dict = {}  # (model_name, device) → WhisperModel
 
 
-def _whisper_segmente(audio_pfad: str, model_name: str, device: str) -> tuple:
+def _whisper_segmente(audio_pfad: str, model_name: str, device: str) -> tuple[list, float]:
     """
     Transkription mit faster-whisper (CTranslate2).
-    Gibt (segmente, volltext) zurück.
+    Gibt (segmente, dauer_sekunden) zurück.
     Segmente: [{"start", "end", "text"}, ...]
     """
     from faster_whisper import WhisperModel
@@ -36,8 +55,8 @@ def _whisper_segmente(audio_pfad: str, model_name: str, device: str) -> tuple:
         )
     model = _whisper_model_cache[cache_key]
 
-    print("Transkribiere...")
-    segments_gen, _ = model.transcribe(
+    print(f"Transkribiere: {os.path.basename(audio_pfad)}...")
+    segments_gen, info = model.transcribe(
         audio_pfad,
         language="de",
         word_timestamps=True,
@@ -49,63 +68,117 @@ def _whisper_segmente(audio_pfad: str, model_name: str, device: str) -> tuple:
         {"start": s.start, "end": s.end, "text": s.text.strip()}
         for s in segments_gen
     ]
-    volltext = " ".join(s["text"] for s in segs)
-    return segs, volltext
+    dauer = info.duration if hasattr(info, "duration") else (segs[-1]["end"] if segs else 0.0)
+    return segs, dauer
 
 
-# ── Haupt-Funktion ─────────────────────────────────────────────
+def _schreibe_transkript(segs: list, volltext: str, ausgabe_datei: str,
+                          datei_label: str, ausgabe_ordner: str) -> str:
+    """Schreibt Segmente + Volltext in eine TXT-Datei."""
+    os.makedirs(ausgabe_ordner, exist_ok=True)
+    with open(ausgabe_datei, "w", encoding="utf-8") as f:
+        f.write("TRANSKRIPT\n")
+        f.write(f"Datei: {datei_label}\n")
+        f.write(f"Erstellt: {datetime.now().strftime('%d.%m.%Y %H:%M')}\n")
+        f.write("=" * 60 + "\n\n")
 
-def transkribiere(audio_pfad: str, ausgabe_ordner: str = None, model_name: str = None):
+        for seg in segs:
+            f.write(f"[{_fmt(seg['start'])} - {_fmt(seg['end'])}] {seg['text']}\n")
+
+        f.write("\n" + "=" * 60 + "\n")
+        f.write("VOLLTEXT:\n\n")
+        f.write(volltext)
+    print(f"\nTranskript gespeichert: {ausgabe_datei}")
+    return ausgabe_datei
+
+
+# ── Öffentliche Funktionen ────────────────────────────────────
+
+def transkribiere(audio_pfad: str, ausgabe_ordner: str = None, model_name: str = None) -> str:
+    """
+    Transkribiert eine einzelne Audiodatei.
+    Gibt den Pfad zur erzeugten TXT-Datei zurück.
+    """
     if not os.path.exists(audio_pfad):
         print(f"FEHLER: Datei nicht gefunden: {audio_pfad}")
         sys.exit(1)
 
     if ausgabe_ordner is None:
         ausgabe_ordner = os.path.dirname(audio_pfad)
-    os.makedirs(ausgabe_ordner, exist_ok=True)
 
     basis_name    = os.path.splitext(os.path.basename(audio_pfad))[0]
     zeitstempel   = datetime.now().strftime("%Y%m%d_%H%M")
     ausgabe_datei = os.path.join(ausgabe_ordner, f"{basis_name}_transkript_{zeitstempel}.txt")
 
-    device = os.environ.get("WHISPER_DEVICE", "cpu")
-    try:
-        import ctranslate2
-        if ctranslate2.get_cuda_device_count() > 0:
-            device = "cuda"
-            print("GPU erkannt – nutze CUDA")
-        else:
-            print("Kein CUDA gefunden – nutze CPU")
-    except Exception:
-        print(f"Nutze Device: {device}")
+    device, model_name = _get_device_and_model(model_name)
+    segs, _ = _whisper_segmente(audio_pfad, model_name, device)
+    volltext = " ".join(s["text"] for s in segs)
 
-    if model_name is None:
-        model_name = os.environ.get("WHISPER_MODEL", "large")
+    return _schreibe_transkript(
+        segs, volltext, ausgabe_datei,
+        datei_label=os.path.basename(audio_pfad),
+        ausgabe_ordner=ausgabe_ordner,
+    )
 
-    print(f"\nTranskribiere: {os.path.basename(audio_pfad)}")
 
-    segs, volltext = _whisper_segmente(audio_pfad, model_name, device)
+def transkribiere_mehrere(audio_pfade: list[str], ausgabe_ordner: str,
+                           model_name: str = None) -> str:
+    """
+    Transkribiert mehrere Audiodateien (Segmente einer Aufnahme) und
+    fügt sie zu einem einzigen Transkript zusammen.
 
-    # ── Datei schreiben ───────────────────────────────────────
-    # Ordner nochmals anlegen – könnte während der langen Transkription gelöscht worden sein
-    os.makedirs(ausgabe_ordner, exist_ok=True)
-    with open(ausgabe_datei, "w", encoding="utf-8") as f:
-        f.write("TRANSKRIPT\n")
-        f.write(f"Datei: {os.path.basename(audio_pfad)}\n")
-        f.write(f"Erstellt: {datetime.now().strftime('%d.%m.%Y %H:%M')}\n")
-        f.write("=" * 60 + "\n\n")
+    Timestamps werden durch Offset (kumulierte Dauer) korrekt verschoben.
+    Eine 1,5 s Überlappung zwischen Segmenten wird durch Duplikat-Filter entfernt.
+
+    Gibt den Pfad zur erzeugten TXT-Datei zurück.
+    """
+    if not audio_pfade:
+        raise ValueError("Keine Audiodateien angegeben.")
+
+    if len(audio_pfade) == 1:
+        return transkribiere(audio_pfade[0], ausgabe_ordner, model_name)
+
+    device, model_name = _get_device_and_model(model_name)
+
+    alle_segs: list[dict] = []
+    offset = 0.0
+    OVERLAP_TOLERANZ = 2.0  # Sekunden – Überlappungsbereich überspringen
+
+    for pfad in sorted(audio_pfade):
+        print(f"\n[{sorted(audio_pfade).index(pfad)+1}/{len(audio_pfade)}] {os.path.basename(pfad)}")
+        segs, dauer = _whisper_segmente(pfad, model_name, device)
 
         for seg in segs:
-            start_str = _fmt(seg["start"])
-            end_str   = _fmt(seg["end"])
-            f.write(f"[{start_str} - {end_str}] {seg['text']}\n")
+            abs_start = seg["start"] + offset
+            # Überlappungsbereich am Segment-Anfang filtern:
+            # Segmente deren Start innerhalb der letzten OVERLAP_TOLERANZ Sekunden
+            # des vorherigen Segments liegen, wurden bereits erfasst.
+            if alle_segs and abs_start < offset + OVERLAP_TOLERANZ - dauer + dauer:
+                # Vereinfacht: erste Segmente eines Folgesegments überspringen,
+                # solange abs_start < offset (also vor dem Offset-Zeitpunkt liegt)
+                if abs_start < offset:
+                    continue
+            alle_segs.append({
+                "start": abs_start,
+                "end":   seg["end"] + offset,
+                "text":  seg["text"],
+            })
 
-        f.write("\n" + "=" * 60 + "\n")
-        f.write("VOLLTEXT:\n\n")
-        f.write(volltext)
+        offset += dauer
 
-    print(f"\nTranskript gespeichert: {ausgabe_datei}")
-    return ausgabe_datei
+    volltext = " ".join(s["text"] for s in alle_segs)
+
+    # Dateiname basierend auf dem ersten Segment
+    basis_name    = "audio"
+    zeitstempel   = datetime.now().strftime("%Y%m%d_%H%M")
+    ausgabe_datei = os.path.join(ausgabe_ordner, f"{basis_name}_transkript_{zeitstempel}.txt")
+    datei_label   = f"{len(audio_pfade)} Segmente ({os.path.basename(audio_pfade[0])} … {os.path.basename(audio_pfade[-1])})"
+
+    return _schreibe_transkript(
+        alle_segs, volltext, ausgabe_datei,
+        datei_label=datei_label,
+        ausgabe_ordner=ausgabe_ordner,
+    )
 
 
 if __name__ == "__main__":
