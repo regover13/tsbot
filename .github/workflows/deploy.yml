@@ -40,5 +40,10 @@ jobs:
       - name: Trigger Portainer Redeploy
         if: success()
         run: |
-          curl -s -o /dev/null -w "%{http_code}" \
-            -X POST "${{ secrets.PORTAINER_WEBHOOK_URL }}"
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X POST "${{ secrets.PORTAINER_WEBHOOK_URL }}")
+          echo "Portainer webhook response: $HTTP_CODE"
+          if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "204" ]; then
+            echo "::error::Portainer webhook fehlgeschlagen (HTTP $HTTP_CODE)"
+            exit 1
+          fi
