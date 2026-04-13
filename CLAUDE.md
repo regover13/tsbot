@@ -48,8 +48,10 @@ nginx/                   # nginx-Reverse-Proxy-Konfiguration
 - `config/config.env` enthält Secrets – **niemals committen** (in `.gitignore`)
 - Session-Zustände: `IDLE → RECORDING → TRANSCRIBING → GENERATING → DONE`
 - Session-Daten liegen unter `data/sessions/YYYYMMDD_HHMMSS/`
-- Linux-Deployment-Pfad: `/opt/tsbot/`; User: `tsbot`
-- systemd-Services: `tsbot-api`, `tsbot-pulseaudio`
+- Deployment über **Docker/Portainer** (kein `/opt/tsbot/`-Verzeichnis)
+- Image: `ghcr.io/regover13/tsbot:latest` (gebaut via GitHub Actions bei Push auf `master`)
+- Compose-Stack auf Server: `/var/lib/docker/volumes/portainer_data/_data/compose/5/docker-compose.yml`
+- Secrets als Umgebungsvariablen im Compose-Stack hinterlegt
 
 ---
 
@@ -66,8 +68,6 @@ nginx/                   # nginx-Reverse-Proxy-Konfiguration
 | `TS_SERVER_ID` | Virtual Server ID (Standard: `1`) |
 | `TS_CHANNEL_ID` | Standard-Kanal für Aufnahme |
 | `WHISPER_MODEL` | `small` / `medium` / `large` |
-| `USE_DIARIZATION` | `true` / `false` |
-| `HF_TOKEN` | HuggingFace Token (für Diarization) |
 | `API_PORT` | Web-UI Port (Standard: `8080`) |
 | `API_USER` | Web-UI Benutzername |
 | `API_SECRET` | Web-UI Passwort |
@@ -77,17 +77,17 @@ nginx/                   # nginx-Reverse-Proxy-Konfiguration
 ## Häufige Befehle
 
 ```bash
-# Service-Status prüfen
-systemctl status tsbot-pulseaudio tsbot-api
+# Container-Status prüfen
+docker ps | grep tsbot
 
 # Live-Log
-journalctl -u tsbot-api -f
+docker logs -f tsbot
 
 # API lokal testen
 curl -u admin:PASSWORT http://localhost:8080/status
 
-# Backup manuell ausführen
-/opt/tsbot/scripts/backup_onedrive.sh
+# Image manuell aktualisieren
+docker pull ghcr.io/regover13/tsbot:latest
 ```
 
 ---
@@ -98,4 +98,5 @@ curl -u admin:PASSWORT http://localhost:8080/status
 - Windows-`.bat`-Dateien sind nur für lokalen Betrieb, nicht für den Server relevant
 - Der TS3-Client läuft headless unter Xvfb `:99` (kein physisches Display)
 - Die FastAPI-App stellt das Web-Dashboard unter `/` aus `api/static/index.html` bereit
-- Diarization ist optional und erfordert einen HuggingFace-Account + Lizenz-Akzeptanz
+- Diarization wurde entfernt (nur noch plain openai-whisper)
+- `USE_DIARIZATION` und `HF_TOKEN` existieren nicht mehr im Code

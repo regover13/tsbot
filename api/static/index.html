@@ -445,6 +445,8 @@ function switchTab(name, btn) {
   btn.classList.add('active');
   if (name === 'agenda')     loadAgenda();
   if (name === 'protokolle') loadProtocols();
+  if (name === 'aufnahme' && _agendaDirty)
+    toast('Achtung: Agenda hat ungespeicherte Änderungen – bitte im Tab "Agenda" speichern.', 'error');
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -749,11 +751,13 @@ function setBtn(id, loading) {
 // Agenda Editor
 // ═══════════════════════════════════════════════════════════
 let _agendaPunkte = [];
+let _agendaDirty  = false;
 
 async function loadAgenda() {
   try {
     const d = await api('/agenda');
     _agendaPunkte = d.punkte || [];
+    _agendaDirty  = false;
     renderAgenda();
   } catch(e) {
     toast('Agenda laden fehlgeschlagen: ' + e.message, 'error');
@@ -769,7 +773,7 @@ function renderAgenda() {
     li.draggable = true;
     li.innerHTML = `
       <span class="drag-handle" title="Ziehen zum Sortieren">⠿</span>
-      <input type="text" value="${escHtml(p)}" oninput="_agendaPunkte[${i}]=this.value">
+      <input type="text" value="${escHtml(p)}" oninput="_agendaPunkte[${i}]=this.value; _agendaDirty=true;">
       <button class="del-btn" onclick="deletePunkt(${i})" title="Entfernen">✕</button>
     `;
     li.addEventListener('dragstart', dragStart);
@@ -788,11 +792,13 @@ function addPunkt() {
   if (!val) return;
   _agendaPunkte.push(val);
   inp.value = '';
+  _agendaDirty = true;
   renderAgenda();
 }
 
 function deletePunkt(i) {
   _agendaPunkte.splice(i, 1);
+  _agendaDirty = true;
   renderAgenda();
 }
 
@@ -807,6 +813,7 @@ async function saveAgenda() {
       body:   JSON.stringify({ punkte }),
     });
     _agendaPunkte = d.punkte;
+    _agendaDirty  = false;
     renderAgenda();
     toast(d.message, 'ok');
   } catch(e) {
@@ -824,7 +831,8 @@ function dragDrop(e)  {
   if (_dragIdx === null || _dragIdx === target) return;
   const moved = _agendaPunkte.splice(_dragIdx, 1)[0];
   _agendaPunkte.splice(target, 0, moved);
-  _dragIdx = null;
+  _dragIdx     = null;
+  _agendaDirty = true;
   renderAgenda();
 }
 

@@ -47,7 +47,7 @@ class AudioCapture:
             cmd,
             stdin=subprocess.PIPE,
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,  # PIPE würde den 64KB-Buffer in ~21 min füllen (ffmpeg 7.x)
         )
         logger.info("Aufnahme läuft (PID %d) → %s", self._process.pid, self._output_path)
 

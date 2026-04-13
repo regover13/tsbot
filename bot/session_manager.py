@@ -96,13 +96,16 @@ class SessionManager:
         self._channel_events     = []
         self._kicked_triggered   = False
 
-        # Agenda speichern (aus Parameter oder Datei)
+        # Agenda als Snapshot in Session-Verzeichnis speichern (Inhalt einfrieren, nicht nur Pfad)
         if agenda:
-            agenda_file = self.session_dir / "agenda.txt"
-            agenda_file.write_text("\n".join(agenda), encoding="utf-8")
-            current_agenda = str(agenda_file)
+            inhalt = "\n".join(agenda)
+        elif AGENDA_PATH.exists():
+            inhalt = AGENDA_PATH.read_text(encoding="utf-8")
         else:
-            current_agenda = str(AGENDA_PATH) if AGENDA_PATH.exists() else None
+            inhalt = ""
+        agenda_file = self.session_dir / "agenda.txt"
+        agenda_file.write_text(inhalt, encoding="utf-8")
+        current_agenda = str(agenda_file) if inhalt.strip() else None
 
         # Metadata
         meta = {
@@ -323,6 +326,7 @@ class SessionManager:
 
     async def _auto_stop(self):
         """Stoppt die Session automatisch nach einem Kick."""
+        self.error_msg = "Session automatisch gestoppt: TS3-Client getrennt oder vom Server gekickt."
         try:
             await self.stop_session()
         except RuntimeError:
