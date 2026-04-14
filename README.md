@@ -9,7 +9,7 @@ Protokolle benötigen, ohne manuell mitschreiben zu müssen.**
 
 ## Features
 
-- **Segmentierte Aufnahme** – PulseAudio Null-Sink (Linux) oder VB-Cable (Windows), headless im Hintergrund. Aufnahme in rollierenden 10-Minuten-Segmenten (`audio_001.mp3`, `audio_002.mp3`, …); Freeze-Watchdog erkennt eingefrorenes ffmpeg und rotiert automatisch. Format: 16 kHz mono MP3 (Whisper-optimiert)
+- **Segmentierte Aufnahme** – PulseAudio Null-Sink (Linux) oder VB-Cable (Windows), headless im Hintergrund. Aufnahme in rollierenden 10-Minuten-Segmenten (`audio_001.mp3`, `audio_002.mp3`, …) mit 1,5 s Overlap; Freeze-Watchdog erkennt eingefrorenes ffmpeg und rotiert automatisch. Format: 16 kHz mono 32 kbps MP3 (Whisper-optimiert). ffmpeg läuft mit SCHED_FIFO Echtzeit-Scheduling (`chrt -f 50`) – kann nicht durch andere Prozesse von der CPU verdrängt werden
 - **Transkription mit [openai-whisper](https://github.com/openai/whisper)** – Lokal auf dem Server, kein API-Call; Modell `medium` als Standard
 - **Sprechererkennung** – Der Bot erfasst per TS3 ClientQuery Events (`notifytalkstatuschange`), wer wann spricht.
   Whisper-Segmente werden automatisch mit Sprechernamen annotiert: `[00:45 - 01:30] Max Mustermann: Text`.
@@ -42,7 +42,7 @@ mit einer Ausnahme (siehe unten).
 
 | Daten | Ziel | Hinweis |
 |-------|------|---------|
-| **Audio (.mp3)** | Nirgends – bleibt auf dem Server | faster-whisper läuft lokal |
+| **Audio (.mp3)** | Nirgends – bleibt auf dem Server | openai-whisper läuft lokal |
 | **Transkript (Text)** | Claude API (Anthropic) | Für die Protokollerstellung |
 | **Screenshots** | Claude API (Anthropic) | Nur im Windows-Modus für Teilnehmererkennung |
 

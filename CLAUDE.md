@@ -53,13 +53,19 @@ nginx/                   # nginx-Reverse-Proxy-Konfiguration
 - Compose-Stack auf Server: `/var/lib/docker/volumes/portainer_data/_data/compose/5/docker-compose.yml`
 - Secrets als Umgebungsvariablen im Compose-Stack hinterlegt
 - **GHCR Registry** muss in Portainer hinterlegt sein (Registries → GitHub → ghcr.io / regover13 / PAT mit `read:packages`), sonst schlägt Portainer-Webhook-Deploy still fehl
+- **CI/CD:** GitHub Actions baut Image → pushed zu GHCR → ruft Portainer API direkt auf (PUT /api/stacks/5) mit `pullImage:true`. Kein Webhook (Portainer-Webhooks setzen Docker Swarm voraus). Secrets: `PORTAINER_URL`, `PORTAINER_USER`, `PORTAINER_PASS`, `PORTAINER_STACK_ID`, `PORTAINER_ENDPOINT_ID`
+- **`cap_add: [SYS_NICE]`** im docker-compose.yml nötig damit `chrt` im Container funktioniert
 
 ## Audio-Aufnahme
 
 - Segmentierte Aufnahme: `audio_001.mp3`, `audio_002.mp3`, … (Standard: 10 Min pro Segment)
-- Freeze-Watchdog: erkennt eingefrorenes ffmpeg nach 60s → rotiert automatisch auf neues Segment
+- Overlap: 1,5 s zwischen Segmenten → kein Audio-Gap bei Rotation
+- Freeze-Watchdog: erkennt eingefrorenes ffmpeg nach 60s (2× gleiche Dateigröße) → rotiert automatisch
+- Schonfrist: 90s nach Segment-Start keine Freeze-Prüfung (ffmpeg startet bei 0 Bytes)
 - Format: **16 kHz mono, 32 kbps MP3** (Whisper-optimiert; Whisper resampled intern auf 16 kHz)
-- ffmpeg läuft mit `nice -n -10` für CPU-Priorität
+- ffmpeg läuft mit `chrt -f 50` (SCHED_FIFO Echtzeit-Scheduling) → kann nicht durch andere Prozesse verdrängt werden
+- `setcap cap_sys_nice+eip /usr/bin/chrt` im Dockerfile → wirkt auch als non-root User (UID 1000)
+- `-fflags +flush_packets` → ffmpeg schreibt nach jedem Frame auf Disk → Watchdog sieht echten Stand
 - PulseAudio Null-Sink `tsbot_sink` muss vor Aufnahme laufen (`scripts/start_pulseaudio.sh`)
 
 ## API-Endpoints (wichtige)
