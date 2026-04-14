@@ -15,6 +15,12 @@ class StartRequest(BaseModel):
     channel_id:          int | None = None
 
 
+class MetaUpdateRequest(BaseModel):
+    thema:               str | None = None
+    agenda:              list[str] | None = None
+    extra_instruktionen: str | None = None
+
+
 class ChannelSwitchRequest(BaseModel):
     channel_id: int
 
@@ -58,6 +64,24 @@ async def stop_session(request: Request):
         "session_id": manager.session_id,
         "message":    "Aufnahme gestoppt – Verarbeitung läuft im Hintergrund.",
     }
+
+
+@router.patch("/meta", summary="Sitzungs-Metadaten während der Aufnahme aktualisieren")
+async def update_meta(body: MetaUpdateRequest, request: Request):
+    """
+    Aktualisiert Thema, Agenda und/oder Extra-Instruktionen der laufenden Session.
+    Nur während RECORDING möglich.
+    """
+    manager = request.app.state.manager
+    try:
+        await manager.update_meta(
+            thema=body.thema,
+            agenda=body.agenda,
+            extra_instruktionen=body.extra_instruktionen,
+        )
+    except RuntimeError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    return {"message": "Metadaten aktualisiert."}
 
 
 @router.post("/channel", summary="Kanal während der Aufnahme wechseln")

@@ -46,7 +46,8 @@ class SessionManager:
         self.state:      State    = State.IDLE
         self.session_id: str | None = None
         self.session_dir: Path | None = None
-        self.thema:      str      = ""
+        self.thema:               str  = ""
+        self.extra_instruktionen: str  = ""
         self.started_at: datetime | None = None
         self.error_msg:  str | None = None
         self.freeze_warning: bool = False
@@ -87,7 +88,8 @@ class SessionManager:
         self.session_id  = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.session_dir = DATA_DIR / "sessions" / self.session_id
         self.session_dir.mkdir(parents=True, exist_ok=True)
-        self.thema       = thema
+        self.thema               = thema
+        self.extra_instruktionen = extra_instruktionen or ""
         self.started_at  = datetime.now()
         self.error_msg   = None
         self._loop       = asyncio.get_running_loop()
@@ -160,6 +162,36 @@ class SessionManager:
         self.state = State.RECORDING
         logger.info("Session %s gestartet – State: RECORDING (Kanal %d)", self.session_id, cid)
         return self.session_id
+
+    async def update_meta(self, thema: str | None = None,
+                          agenda: list | None = None,
+                          extra_instruktionen: str | None = None) -> None:
+        """
+        Aktualisiert Thema, Agenda und/oder Extra-Instruktionen der laufenden Session.
+        Nur während RECORDING möglich. Schreibt meta.json und agenda.txt neu.
+        """
+        if self.state != State.RECORDING:
+            raise RuntimeError("Keine aktive Aufnahme – Metadaten können nicht geändert werden.")
+
+        meta_path = self.session_dir / "meta.json"
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+
+        if thema is not None:
+            self.thema = thema
+            meta["thema"] = thema
+
+        if agenda is not None:
+            inhalt = "\n".join(agenda)
+            agenda_file = self.session_dir / "agenda.txt"
+            agenda_file.write_text(inhalt, encoding="utf-8")
+            meta["agenda"]      = agenda
+            meta["agenda_file"] = str(agenda_file) if inhalt.strip() else None
+
+        if extra_instruktionen is not None:
+            self.extra_instruktionen = extra_instruktionen
+            meta["extra_instruktionen"] = extra_instruktionen
+
+        meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
 
     async def stop_session(self) -> None:
         """
@@ -302,6 +334,7 @@ class SessionManager:
             "state":                self.state,
             "session_id":           self.session_id,
             "thema":                self.thema,
+            "extra_instruktionen":  self.extra_instruktionen,
             "started_at":           self.started_at.isoformat() if self.started_at else None,
             "duration_seconds":     duration_sec,
             "participant_count":    participant_count,
@@ -578,6 +611,7 @@ class SessionManager:
         self.session_id          = None
         self.session_dir         = None
         self.thema               = ""
+        self.extra_instruktionen = ""
         self.started_at          = None
         self.error_msg           = None
         self.freeze_warning      = False

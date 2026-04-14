@@ -297,7 +297,7 @@
 
       <div class="field">
         <label>Thema / Titel der Sitzung *</label>
-        <input type="text" id="f-thema" placeholder="z.B. FRS Mitgliederversammlung Februar 2026">
+        <input type="text" id="f-thema" placeholder="z.B. FRS Mitgliederversammlung Februar 2026" oninput="_metaDirty = true">
       </div>
 
       <div class="field">
@@ -314,7 +314,8 @@
       <div class="field">
         <label>Agenda für diese Sitzung</label>
         <textarea id="f-agenda-override" rows="4"
-          placeholder="Leer lassen = Server-Agenda wird verwendet (Tab &quot;Agenda&quot;).&#10;&#10;Einen Punkt pro Zeile – überschreibt nur für diese Sitzung."></textarea>
+          placeholder="Leer lassen = Server-Agenda wird verwendet (Tab &quot;Agenda&quot;).&#10;&#10;Einen Punkt pro Zeile – überschreibt nur für diese Sitzung."
+          oninput="_metaDirty = true"></textarea>
         <p class="hint">Leer = gespeicherte Server-Agenda. Befüllen = nur für diese Sitzung.</p>
       </div>
 
@@ -322,13 +323,22 @@
         <label>Zusätzliche Instruktionen für die Protokollerstellung (Prompt)</label>
         <textarea id="f-extra" rows="12"
           placeholder="z.B.: Schreibe Beschlüsse besonders hervor. Ignoriere Small Talk. Verwende förmliche Sprache."
-          oninput="saveExtra()"></textarea>
+          oninput="saveExtra(); _metaDirty = true"></textarea>
         <p class="hint" style="display:flex;justify-content:space-between;align-items:center;margin-top:.4rem">
           <span>Wird server-seitig gespeichert und direkt an Claude angehängt.</span>
           <span style="display:flex;gap:.4rem;flex-shrink:0;margin-left:.5rem">
             <button class="btn btn-ghost" style="font-size:.75rem;padding:.2rem .6rem" onclick="openDefaultModal()">✏ Standard</button>
             <button class="btn btn-ghost" style="font-size:.75rem;padding:.2rem .6rem" onclick="resetExtraToDefault()">↺ Zurücksetzen</button>
           </span>
+        </p>
+      </div>
+
+      <div id="meta-save-row" style="display:none; margin-bottom: 0.75rem;">
+        <button class="btn btn-ghost" style="width:100%; font-size:0.85rem;" onclick="saveSessionMeta()">
+          💾 Thema / Agenda / Prompt für laufende Sitzung speichern
+        </button>
+        <p class="hint" style="margin-top:0.3rem; text-align:center;">
+          Änderungen werden erst nach dem Speichern für die Protokollerstellung verwendet.
         </p>
       </div>
 
@@ -653,6 +663,23 @@ async function stopSession() {
   }
 }
 
+async function saveSessionMeta() {
+  const thema = document.getElementById('f-thema').value.trim();
+  const agendaRaw = document.getElementById('f-agenda-override').value.trim();
+  const agenda = agendaRaw ? agendaRaw.split('\n').map(l => l.trim()).filter(Boolean) : [];
+  const extra  = document.getElementById('f-extra').value.trim();
+  try {
+    await api('/session/meta', {
+      method: 'PATCH',
+      body: JSON.stringify({ thema, agenda: agenda.length ? agenda : null, extra_instruktionen: extra }),
+    });
+    _metaDirty = false;
+    toast('Metadaten gespeichert.', 'ok');
+  } catch(e) {
+    toast('Speichern fehlgeschlagen: ' + e.message, 'error');
+  }
+}
+
 async function refreshStatus() {
   try {
     const s = await api('/status');
@@ -746,6 +773,18 @@ function applyStatus(s) {
   document.getElementById('btn-start').disabled = !isIdle;
   document.getElementById('btn-stop').disabled  = !isRec;
 
+  // Felder beim ersten RECORDING-Übergang aus Status befüllen (z.B. nach Page-Refresh)
+  if (isRec && prevState !== 'RECORDING') {
+    document.getElementById('f-thema').value = s.thema || '';
+    if (s.extra_instruktionen) {
+      document.getElementById('f-extra').value = s.extra_instruktionen;
+    }
+    _metaDirty = false;
+  }
+  // Speichern-Button: nur während Aufnahme anzeigen
+  document.getElementById('meta-save-row').style.display = isRec ? '' : 'none';
+  if (!isRec) _metaDirty = false;
+
   if (s.state === 'DONE' && prevState !== 'DONE') {
     stopPoll();
     loadProtocols();
@@ -773,6 +812,7 @@ function setBtn(id, loading) {
 // ═══════════════════════════════════════════════════════════
 var _agendaPunkte = [];
 var _agendaDirty  = false;
+var _metaDirty    = false;
 
 async function loadAgenda() {
   try {
