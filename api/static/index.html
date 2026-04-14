@@ -681,6 +681,10 @@ function applyStatus(s) {
     document.getElementById('m-dauer').textContent = '—';
   }
 
+  // Aktueller Kanal (nur während Aufnahme)
+  const isRec  = s.state === 'RECORDING';
+  const chItem = document.getElementById('m-channel-item');
+
   // Segment-Info (nur während Aufnahme)
   const segItem = document.getElementById('m-segment-item');
   const freezeLine = document.getElementById('freeze-line');
@@ -694,10 +698,6 @@ function applyStatus(s) {
     segItem.style.display = 'none';
     freezeLine.style.display = 'none';
   }
-
-  // Aktueller Kanal (nur während Aufnahme)
-  const chItem = document.getElementById('m-channel-item');
-  const isRec  = s.state === 'RECORDING';
   if (isRec && s.current_channel_id) {
     const chName = _channelNames[s.current_channel_id] || `#${s.current_channel_id}`;
     document.getElementById('m-channel').textContent = chName;
