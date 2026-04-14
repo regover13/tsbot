@@ -9,8 +9,8 @@ Protokolle benötigen, ohne manuell mitschreiben zu müssen.**
 
 ## Features
 
-- **Automatische Aufnahme** – PulseAudio Null-Sink (Linux) oder VB-Cable (Windows), headless im Hintergrund
-- **Transkription mit [faster-whisper](https://github.com/SYSTRAN/faster-whisper)** (Systran) – 3–5× schneller als das OpenAI-Original, CPU-optimiert (int8), Modell `medium` als Standard; Modell-Gewichte stammen von OpenAI (Open Source), kein API-Call
+- **Segmentierte Aufnahme** – PulseAudio Null-Sink (Linux) oder VB-Cable (Windows), headless im Hintergrund. Aufnahme in rollierenden 10-Minuten-Segmenten (`audio_001.mp3`, `audio_002.mp3`, …); Freeze-Watchdog erkennt eingefrorenes ffmpeg und rotiert automatisch. Format: 16 kHz mono MP3 (Whisper-optimiert)
+- **Transkription mit [openai-whisper](https://github.com/openai/whisper)** – Lokal auf dem Server, kein API-Call; Modell `medium` als Standard
 - **Sprechererkennung** – Der Bot erfasst per TS3 ClientQuery Events (`notifytalkstatuschange`), wer wann spricht.
   Whisper-Segmente werden automatisch mit Sprechernamen annotiert: `[00:45 - 01:30] Max Mustermann: Text`.
   Die ClientQuery-Verbindung bleibt durch einen Keepalive (alle 60s) dauerhaft aktiv – auch bei langen Sitzungen ohne Aktivität.

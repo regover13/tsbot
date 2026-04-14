@@ -52,6 +52,25 @@ nginx/                   # nginx-Reverse-Proxy-Konfiguration
 - Image: `ghcr.io/regover13/tsbot:latest` (gebaut via GitHub Actions bei Push auf `master`)
 - Compose-Stack auf Server: `/var/lib/docker/volumes/portainer_data/_data/compose/5/docker-compose.yml`
 - Secrets als Umgebungsvariablen im Compose-Stack hinterlegt
+- **GHCR Registry** muss in Portainer hinterlegt sein (Registries → GitHub → ghcr.io / regover13 / PAT mit `read:packages`), sonst schlägt Portainer-Webhook-Deploy still fehl
+
+## Audio-Aufnahme
+
+- Segmentierte Aufnahme: `audio_001.mp3`, `audio_002.mp3`, … (Standard: 10 Min pro Segment)
+- Freeze-Watchdog: erkennt eingefrorenes ffmpeg nach 60s → rotiert automatisch auf neues Segment
+- Format: **16 kHz mono, 32 kbps MP3** (Whisper-optimiert; Whisper resampled intern auf 16 kHz)
+- ffmpeg läuft mit `nice -n -10` für CPU-Priorität
+- PulseAudio Null-Sink `tsbot_sink` muss vor Aufnahme laufen (`scripts/start_pulseaudio.sh`)
+
+## API-Endpoints (wichtige)
+
+| Endpoint | Methode | Beschreibung |
+|---|---|---|
+| `/session/start` | POST | Aufnahme starten (thema, agenda, extra_instruktionen, channel_id) |
+| `/session/stop` | POST | Aufnahme stoppen + Pipeline starten |
+| `/session/meta` | PATCH | Thema/Agenda/Prompt während laufender Aufnahme ändern |
+| `/session/channel` | POST | TS3-Kanal wechseln während Aufnahme |
+| `/status` | GET | Zustand inkl. Segment-Info, freeze_warning, extra_instruktionen |
 
 ---
 

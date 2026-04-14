@@ -153,13 +153,14 @@ class SegmentedAudioCapture:
         path = self._session_dir / f"audio_{self._segment_index:03d}.mp3"
 
         cmd = [
+            "nice", "-n", "-10",
             "ffmpeg",
             "-f", "pulse",
             "-i", f"{self._sink_name}.monitor",
             "-acodec", "libmp3lame",
-            "-ar", "44100",
+            "-ar", "16000",
             "-ac", "1",
-            "-ab", "96k",
+            "-ab", "32k",
             "-y",
             str(path),
         ]
