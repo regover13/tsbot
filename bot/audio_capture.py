@@ -8,6 +8,7 @@ auf ein neues Segment.
 """
 
 import os
+import time
 import asyncio
 import logging
 import subprocess
@@ -46,6 +47,7 @@ class SegmentedAudioCapture:
         self._rotate_task:   asyncio.Task | None = None
         self._freeze_callback = None
         self._rotating        = False        # verhindert gleichzeitige Rotationen
+        self._last_segment_start: float = 0.0  # Zeitstempel des letzten Segment-Starts
 
     # ── Öffentliche API ───────────────────────────────────────
 
@@ -165,6 +167,7 @@ class SegmentedAudioCapture:
             str(path),
         ]
         logger.info("Starte Segment %03d → %s", self._segment_index, path.name)
+        self._last_segment_start = time.monotonic()
 
         process = subprocess.Popen(
             cmd,
@@ -204,6 +207,9 @@ class SegmentedAudioCapture:
         Alle 30 s Dateigröße des aktuellen Segments prüfen.
         Nach 60 s ohne Wachstum (2 aufeinanderfolgende Prüfungen) → Freeze erkannt
         → Segment rotieren + freeze_callback aufrufen.
+
+        Schonfrist: 90 s nach Segment-Start werden keine Freeze-Checks durchgeführt,
+        da ffmpeg erst puffern muss und die Datei anfangs bei 0 Bytes verweilen kann.
         """
         last_size    = -1
         frozen_count = 0
@@ -212,6 +218,13 @@ class SegmentedAudioCapture:
             await asyncio.sleep(30)
 
             if not self._current_path or not self._current_path.exists():
+                last_size    = -1
+                frozen_count = 0
+                continue
+
+            # Schonfrist: nach Segment-Start 90 s nicht prüfen
+            age = time.monotonic() - self._last_segment_start
+            if age < 90:
                 last_size    = -1
                 frozen_count = 0
                 continue
