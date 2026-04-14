@@ -9,6 +9,8 @@ services:
       - /opt/tsbot/data:/opt/tsbot/data
       - /run/user/1000/pulse:/run/user/1000/pulse  # PulseAudio-Socket
       - /home/tsbot/.ts3client:/home/tsbot/.ts3client:ro  # ClientQuery-API-Key
+    cap_add:
+      - SYS_NICE             # Erlaubt nice + chrt (Echtzeit-Scheduling für ffmpeg)
     environment:
       - XDG_RUNTIME_DIR=/run/user/1000
       - PULSE_SERVER=unix:/run/user/1000/pulse/native

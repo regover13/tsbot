@@ -155,7 +155,7 @@ class SegmentedAudioCapture:
         path = self._session_dir / f"audio_{self._segment_index:03d}.mp3"
 
         cmd = [
-            "nice", "-n", "-10",
+            "chrt", "-f", "50",   # SCHED_FIFO Prio 50 – verdrängt alle normalen Prozesse
             "ffmpeg",
             "-f", "pulse",
             "-i", f"{self._sink_name}.monitor",
