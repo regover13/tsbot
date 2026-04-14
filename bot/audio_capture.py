@@ -181,6 +181,7 @@ class SegmentedAudioCapture:
             "-ar", "16000",
             "-ac", "1",
             "-ab", "32k",
+            "-fflags", "+flush_packets",   # sofort auf Disk schreiben → Watchdog sieht echten Stand
             "-y",
             str(path),
         ]
