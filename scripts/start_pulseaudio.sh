@@ -27,17 +27,20 @@ else
     echo "PulseAudio gestartet."
 fi
 
-# Prüfen ob Sink bereits existiert
-if pactl list sinks short 2>/dev/null | grep -q "$SINK_NAME"; then
-    echo "Sink '$SINK_NAME' bereits vorhanden."
-else
-    echo "Lege Null-Sink '$SINK_NAME' an..."
-    pactl load-module module-null-sink \
-        sink_name="$SINK_NAME" \
-        rate=44100 \
-        "sink_properties=device.description='TSBot-Recording-Sink'"
-    echo "Null-Sink '$SINK_NAME' angelegt."
+# Existierenden Sink entladen falls vorhanden (stellt sicheren Rate-Reset sicher)
+EXISTING_MODULE=$(pactl list modules short 2>/dev/null | awk -v name="$SINK_NAME" '$0 ~ name {print $1}' | head -1)
+if [ -n "$EXISTING_MODULE" ]; then
+    echo "Entlade vorhandenen Sink '$SINK_NAME' (Modul $EXISTING_MODULE)..."
+    pactl unload-module "$EXISTING_MODULE" 2>/dev/null || true
 fi
+
+echo "Lege Null-Sink '$SINK_NAME' an (rate=44100, mono)..."
+pactl load-module module-null-sink \
+    sink_name="$SINK_NAME" \
+    rate=44100 \
+    channels=1 \
+    "sink_properties=device.description='TSBot-Recording-Sink'"
+echo "Null-Sink '$SINK_NAME' angelegt."
 
 pactl set-default-sink "$SINK_NAME"
 echo "Standard-Sink gesetzt: $SINK_NAME"
