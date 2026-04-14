@@ -48,6 +48,7 @@ class SegmentedAudioCapture:
         self._freeze_callback = None
         self._rotating        = False        # verhindert gleichzeitige Rotationen
         self._last_segment_start: float = 0.0  # Zeitstempel des letzten Segment-Starts
+        self._use_realtime    = self._check_realtime_sched()
 
     # ── Öffentliche API ───────────────────────────────────────
 
@@ -149,13 +150,30 @@ class SegmentedAudioCapture:
 
     # ── Interne Methoden ──────────────────────────────────────
 
+    @staticmethod
+    def _check_realtime_sched() -> bool:
+        """Prüft ob chrt -f (SCHED_FIFO) verfügbar ist (CAP_SYS_NICE effektiv)."""
+        try:
+            result = subprocess.run(
+                ["chrt", "-f", "50", "true"],
+                capture_output=True,
+            )
+            if result.returncode == 0:
+                logger.info("Echtzeit-Scheduling verfügbar (chrt -f 50).")
+                return True
+        except FileNotFoundError:
+            pass
+        logger.warning("chrt -f nicht verfügbar – ffmpeg läuft ohne Echtzeit-Scheduling "
+                       "(CAP_SYS_NICE fehlt oder chrt nicht installiert).")
+        return False
+
     def _start_new_segment(self) -> None:
         """Startet einen neuen ffmpeg-Prozess für das nächste Segment."""
         self._segment_index += 1
         path = self._session_dir / f"audio_{self._segment_index:03d}.mp3"
 
-        cmd = [
-            "chrt", "-f", "50",   # SCHED_FIFO Prio 50 – verdrängt alle normalen Prozesse
+        prefix = ["chrt", "-f", "50"] if self._use_realtime else []
+        cmd = prefix + [
             "ffmpeg",
             "-f", "pulse",
             "-i", f"{self._sink_name}.monitor",
@@ -166,6 +184,7 @@ class SegmentedAudioCapture:
             "-y",
             str(path),
         ]
+
         logger.info("Starte Segment %03d → %s", self._segment_index, path.name)
         self._last_segment_start = time.monotonic()
 
