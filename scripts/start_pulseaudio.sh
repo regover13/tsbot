@@ -34,6 +34,7 @@ else
     echo "Lege Null-Sink '$SINK_NAME' an..."
     pactl load-module module-null-sink \
         sink_name="$SINK_NAME" \
+        rate=44100 \
         "sink_properties=device.description='TSBot-Recording-Sink'"
     echo "Null-Sink '$SINK_NAME' angelegt."
 fi

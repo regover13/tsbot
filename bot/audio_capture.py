@@ -157,7 +157,9 @@ class SegmentedAudioCapture:
             "-f", "pulse",
             "-i", f"{self._sink_name}.monitor",
             "-acodec", "libmp3lame",
-            "-ab", "64k",
+            "-ar", "44100",
+            "-ac", "1",
+            "-ab", "96k",
             "-y",
             str(path),
         ]
