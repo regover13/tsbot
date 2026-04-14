@@ -39,11 +39,34 @@ jobs:
 
       - name: Trigger Portainer Redeploy
         if: success()
+        env:
+          PORTAINER_URL: ${{ secrets.PORTAINER_URL }}
+          PORTAINER_USER: ${{ secrets.PORTAINER_USER }}
+          PORTAINER_PASS: ${{ secrets.PORTAINER_PASS }}
+          PORTAINER_STACK_ID: ${{ secrets.PORTAINER_STACK_ID }}
+          PORTAINER_ENDPOINT_ID: ${{ secrets.PORTAINER_ENDPOINT_ID }}
         run: |
-          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-            -X POST "${{ secrets.PORTAINER_WEBHOOK_URL }}")
-          echo "Portainer webhook response: $HTTP_CODE"
-          if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "204" ]; then
-            echo "::error::Portainer webhook fehlgeschlagen (HTTP $HTTP_CODE)"
+          # Login → JWT holen
+          JWT=$(curl -s -X POST "$PORTAINER_URL/api/auth" \
+            -H "Content-Type: application/json" \
+            -d "{\"username\":\"$PORTAINER_USER\",\"password\":\"$PORTAINER_PASS\"}" \
+            | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
+
+          # Stack-YAML einlesen und als JSON escapen
+          COMPOSE=$(python3 -c "import json; print(json.dumps(open('docker-compose.yml').read()))")
+
+          # Stack updaten + neues Image pullen
+          HTTP_CODE=$(curl -s -o /tmp/portainer_response.txt -w "%{http_code}" \
+            -X PUT "$PORTAINER_URL/api/stacks/$PORTAINER_STACK_ID?endpointId=$PORTAINER_ENDPOINT_ID" \
+            -H "Authorization: Bearer $JWT" \
+            -H "Content-Type: application/json" \
+            -d "{\"stackFileContent\":$COMPOSE,\"env\":[],\"prune\":false,\"pullImage\":true}")
+
+          echo "Portainer response: $HTTP_CODE"
+          cat /tmp/portainer_response.txt | python3 -c "import sys,json; d=json.load(sys.stdin); print('Stack ID:', d.get('Id','?'))" 2>/dev/null || true
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::Portainer Redeploy fehlgeschlagen (HTTP $HTTP_CODE)"
+            cat /tmp/portainer_response.txt
             exit 1
           fi
