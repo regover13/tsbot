@@ -4,7 +4,9 @@ FROM python:3.11-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     pulseaudio-utils \
-    && rm -rf /var/lib/apt/lists/*
+    libcap2-bin \
+    && rm -rf /var/lib/apt/lists/* \
+    && setcap 'cap_sys_nice+eip' /usr/bin/chrt
 
 # Nicht-Root-User mit UID 1000 (passend zum Host-tsbot-User)
 RUN useradd -u 1000 -m -s /bin/bash tsbot
