@@ -1,6 +1,6 @@
 # TSBot – TeamSpeak Aufnahme & Protokoll-Generator
 
-TSBot nimmt TeamSpeak-Sitzungen automatisch auf, transkribiert sie mit faster-whisper und
+TSBot nimmt TeamSpeak-Sitzungen automatisch auf, transkribiert sie mit openai-whisper und
 erstellt daraus per Claude API ein fertiges Word-Protokoll – inklusive Teilnehmerliste,
 Agenda-Zuordnung, Sprecherzuweisung und Beschlüssen.
 

@@ -139,14 +139,19 @@ class TSQueryTracker:
             logger.warning("Fehler beim Cachen der Kanalnamen: %s", e)
 
     def _lade_aktuelle_teilnehmer(self):
-        """Lädt alle aktuell auf dem Server verbundenen Clients (kanalunabhängig)."""
+        """Lädt Clients im aktuell überwachten Kanal (kanalspezifisch)."""
         if not self._running:
             return
         try:
             resp = self._conn.clientlist()
             for c in resp.parsed:
                 if c.get("client_type") == "0":  # 0 = normaler Client, 1 = Query
-                    self._handle_join(c.get("client_nickname", ""))
+                    try:
+                        cid = int(c.get("cid", 0))
+                    except (ValueError, TypeError):
+                        cid = 0
+                    if self._channel_id == 0 or cid == self._channel_id:
+                        self._handle_join(c.get("client_nickname", ""))
         except Exception as e:
             logger.warning("Fehler beim Laden aktueller Clients: %s", e)
 
@@ -181,7 +186,12 @@ class TSQueryTracker:
             nick = data.get("client_nickname", "")
             client_type = data.get("client_type", "1")
             if client_type == "0":
-                self._handle_join(nick)
+                try:
+                    ctid = int(data.get("ctid", 0))
+                except (ValueError, TypeError):
+                    ctid = 0
+                if self._channel_id == 0 or ctid == self._channel_id:
+                    self._handle_join(nick)
 
         elif event_type == "notifyclientleftview":
             nick = data.get("client_nickname", "")

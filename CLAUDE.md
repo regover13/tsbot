@@ -56,6 +56,14 @@ nginx/                   # nginx-Reverse-Proxy-Konfiguration
 - **CI/CD:** GitHub Actions baut Image → pushed zu GHCR → ruft Portainer API direkt auf (PUT /api/stacks/5) mit `pullImage:true`. Kein Webhook (Portainer-Webhooks setzen Docker Swarm voraus). Secrets: `PORTAINER_URL`, `PORTAINER_USER`, `PORTAINER_PASS`, `PORTAINER_STACK_ID`, `PORTAINER_ENDPOINT_ID`
 - **`cap_add: [SYS_NICE]`** im docker-compose.yml nötig damit `chrt` im Container funktioniert
 
+## Teilnehmer-Tracking
+
+- Tracking per TS3 **ServerQuery** (Port 10011) – kein ClientQuery
+- Nur Clients **im Aufnahme-Kanal** werden erfasst (`cid`-Filter in `clientlist()`, `ctid`-Filter in `notifycliententerview`)
+- Fallback: alle 30 s wird die Clientliste neu eingelesen (erfasst Teilnehmer, die vor Bot-Start im Kanal waren)
+- Beim Kanalwechsel (`switch_channel`) werden Teilnehmer des alten Kanals gespeichert, Liste geleert → neuer Kanal wird sofort korrekt gefiltert
+- **Achtung:** Der Filter wurde in Commit de6d8b0 versehentlich entfernt (alle Server-Clients wurden getrackt) und in einem späteren Fix wiederhergestellt
+
 ## Audio-Aufnahme
 
 - Segmentierte Aufnahme: `audio_001.mp3`, `audio_002.mp3`, … (Standard: 10 Min pro Segment)
