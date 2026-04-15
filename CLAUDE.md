@@ -33,7 +33,7 @@ nginx/                   # nginx-Reverse-Proxy-Konfiguration
 ## Technologie-Stack
 
 - **Python 3.11**, FastAPI, Uvicorn
-- **Whisper** (openai-whisper) / optional **whisperx** für Diarization
+- **Whisper** (faster-whisper, CTranslate2-Backend) für Transkription
 - **Claude API** (Anthropic) für Protokollerstellung – Modell aus `config.env`
 - **TS3 ServerQuery** (telnet-basiert, Port 10011) für Teilnehmer-Tracking
 - **TS3 ClientQuery** (Port 25639) für Bot-Steuerung
