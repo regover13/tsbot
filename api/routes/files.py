@@ -161,10 +161,13 @@ async def _run_retranscribe(session_id: str, session_dir: Path):
             raise ValueError("Keine Audio-Dateien gefunden.")
 
         total_segments = len(audio_paths)
+        # Vorab-Schätzung: 32 kbps mono → 4000 Bytes/s Audiodauer → ~1.3× Echtzeit auf CPU
+        total_bytes = sum(p.stat().st_size for p in audio_paths)
+        estimated_eta = round(total_bytes / 4000 * 1.3)
         _retranscribe_tasks[session_id].update({
             "current_segment": 0,
             "total_segments": total_segments,
-            "eta_sec": None,
+            "eta_sec": estimated_eta,
         })
 
         def _progress(current, total, elapsed, eta):

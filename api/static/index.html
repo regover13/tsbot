@@ -996,7 +996,7 @@ function renderProtocols(sessions) {
             const current = p.current_segment + 1;
             const seg = `${Math.min(current, p.total_segments)}/${p.total_segments}`;
             const eta = p.eta_sec != null && p.eta_sec > 0
-              ? ` · ~${Math.round(p.eta_sec / 60)} min`
+              ? ` · noch ~${Math.round(p.eta_sec / 60)} min`
               : ' · läuft...';
             return `<span style="font-size:.72rem;color:var(--muted)">Segment ${seg}${eta}</span>`;
           })()}
