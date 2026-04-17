@@ -51,8 +51,39 @@ def _get_provider() -> str:
     return os.environ.get("WHISPER_PROVIDER", "local")
 
 
-def _whisper_segmente_openai(audio_pfad: str) -> tuple[list, float]:
-    """Transkription via OpenAI Whisper API (WHISPER_PROVIDER=openai)."""
+_OPENAI_MAX_BYTES = 24 * 1024 * 1024  # 24 MB Sicherheitsmarge (Limit: 25 MB)
+
+
+def _split_audio_for_openai(audio_pfad: str) -> tuple[list[str], str]:
+    """Teilt eine zu große Audiodatei per ffmpeg in Chunks ≤ 24 MB.
+    Gibt (chunk_pfade, tmp_dir) zurück – Aufrufer muss tmp_dir löschen."""
+    import subprocess, tempfile, math
+
+    result = subprocess.run(
+        ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
+         "-of", "csv=p=0", audio_pfad],
+        capture_output=True, text=True,
+    )
+    total_duration = float(result.stdout.strip())
+    file_size = os.path.getsize(audio_pfad)
+    n_chunks = math.ceil(file_size / _OPENAI_MAX_BYTES)
+    chunk_dur = total_duration / n_chunks
+
+    tmp_dir = tempfile.mkdtemp()
+    chunks = []
+    for i in range(n_chunks):
+        out = os.path.join(tmp_dir, f"chunk_{i:03d}.mp3")
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", audio_pfad,
+             "-ss", str(i * chunk_dur), "-t", str(chunk_dur),
+             "-c", "copy", out],
+            capture_output=True,
+        )
+        chunks.append(out)
+    return chunks, tmp_dir
+
+
+def _transcribe_openai_single(audio_pfad: str) -> tuple[list, float]:
     import openai
     client = openai.OpenAI()
     with open(audio_pfad, "rb") as f:
@@ -63,12 +94,34 @@ def _whisper_segmente_openai(audio_pfad: str) -> tuple[list, float]:
             response_format="verbose_json",
             timestamp_granularities=["segment"],
         )
-    segs = [
-        {"start": s.start, "end": s.end, "text": s.text.strip()}
-        for s in result.segments
-    ]
-    dauer = float(result.duration)
-    return segs, dauer
+    segs = [{"start": s.start, "end": s.end, "text": s.text.strip()} for s in result.segments]
+    return segs, float(result.duration)
+
+
+def _whisper_segmente_openai(audio_pfad: str) -> tuple[list, float]:
+    """Transkription via OpenAI Whisper API. Splittet automatisch bei >24 MB."""
+    import shutil
+
+    if os.path.getsize(audio_pfad) <= _OPENAI_MAX_BYTES:
+        return _transcribe_openai_single(audio_pfad)
+
+    print(f"Datei >24 MB – splitte vor OpenAI-Upload...")
+    chunks, tmp_dir = _split_audio_for_openai(audio_pfad)
+    try:
+        alle_segs: list[dict] = []
+        offset = 0.0
+        for chunk in chunks:
+            segs, dauer = _transcribe_openai_single(chunk)
+            for seg in segs:
+                alle_segs.append({
+                    "start": seg["start"] + offset,
+                    "end":   seg["end"]   + offset,
+                    "text":  seg["text"],
+                })
+            offset += dauer
+        return alle_segs, offset
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 def _whisper_segmente(audio_pfad: str, model_name: str, device: str) -> tuple[list, float]:
