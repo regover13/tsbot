@@ -4,6 +4,8 @@
 
 # Whisper (faster-whisper = CTranslate2-Backend, 3–5× schneller als openai-whisper)
 faster-whisper
+# OpenAI Whisper API (optional, nur bei WHISPER_PROVIDER=openai)
+openai
 
 # Protokoll-Generator
 anthropic

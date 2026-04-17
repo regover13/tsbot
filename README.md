@@ -10,7 +10,9 @@ Protokolle benötigen, ohne manuell mitschreiben zu müssen.**
 ## Features
 
 - **Segmentierte Aufnahme** – PulseAudio Null-Sink (Linux) oder VB-Cable (Windows), headless im Hintergrund. Aufnahme in rollierenden 10-Minuten-Segmenten (`audio_001.mp3`, `audio_002.mp3`, …) mit 1,5 s Overlap; Freeze-Watchdog erkennt eingefrorenes ffmpeg und rotiert automatisch. Format: 16 kHz mono 32 kbps MP3 (Whisper-optimiert). ffmpeg läuft mit SCHED_FIFO Echtzeit-Scheduling (`chrt -f 50`) – kann nicht durch andere Prozesse von der CPU verdrängt werden
-- **Transkription mit [faster-whisper](https://github.com/SYSTRAN/faster-whisper)** – CTranslate2-Backend, 3–5× schneller als openai-whisper. Läuft lokal auf dem Server, kein API-Call; Modell `medium` als Standard. CPU-optimiert: Greedy Decoding (`beam_size=1`), `cpu_threads=6`
+- **Transkription** – wählbarer Provider per `WHISPER_PROVIDER`:
+  - `local` (Standard): [faster-whisper](https://github.com/SYSTRAN/faster-whisper), CTranslate2-Backend, läuft lokal auf dem Server; Modell `medium` (CPU-optimiert: `beam_size=1`, `cpu_threads=6`)
+  - `openai`: OpenAI Whisper API, ~$0.36/Stunde Audio, GPU-beschleunigt — Sekunden statt Minuten pro Segment
 - **Sprechererkennung** – Der Bot erfasst per TS3 ClientQuery Events (`notifytalkstatuschange`), wer wann spricht.
   Whisper-Segmente werden automatisch mit Sprechernamen annotiert: `[00:45 - 01:30] Max Mustermann: Text`.
   Die ClientQuery-Verbindung bleibt durch einen Keepalive (alle 60s) dauerhaft aktiv – auch bei langen Sitzungen ohne Aktivität.
@@ -42,7 +44,8 @@ mit einer Ausnahme (siehe unten).
 
 | Daten | Ziel | Hinweis |
 |-------|------|---------|
-| **Audio (.mp3)** | Nirgends – bleibt auf dem Server | faster-whisper läuft lokal |
+| **Audio (.mp3)** | Nirgends (bei `WHISPER_PROVIDER=local`) | faster-whisper läuft lokal |
+| **Audio (.mp3)** | OpenAI API (bei `WHISPER_PROVIDER=openai`) | Nur zur Transkription, kein Training |
 | **Transkript (Text)** | Claude API (Anthropic) | Für die Protokollerstellung |
 | **Screenshots** | Claude API (Anthropic) | Nur im Windows-Modus für Teilnehmererkennung |
 
@@ -439,12 +442,21 @@ Alle Einstellungen in `/opt/tsbot/config/config.env` (Linux) bzw. `config.txt` (
 | `TS_QUERY_PASS` | ServerQuery Passwort | `geheim` |
 | `TS_SERVER_ID` | Virtual Server ID | `1` |
 | `TS_CHANNEL_ID` | Kanal-ID für Aufnahme | `42` |
-| `WHISPER_MODEL` | Modellgröße | `medium` |
+| `WHISPER_PROVIDER` | `local` oder `openai` | `local` |
+| `WHISPER_MODEL` | Modellgröße (nur `local`) | `medium` |
+| `OPENAI_API_KEY` | API-Key (nur `openai`) | – |
 | `API_PORT` | Web-UI Port | `8080` |
 | `API_USER` | Web-UI Benutzername | `admin` |
 | `API_SECRET` | Web-UI Passwort | `geheim` |
 
-**faster-whisper-Modelle nach Hardware** (Systran-Implementierung, int8 auf CPU, Modell-Gewichte von OpenAI):
+**Transkriptions-Provider:**
+
+| Provider | Geschwindigkeit | Kosten | Einrichtung |
+|----------|----------------|--------|-------------|
+| `local` (Standard) | ~30–40 Min/h Audio | kostenlos | kein API-Key nötig |
+| `openai` | Sekunden/Segment | ~$0.36/h Audio | OpenAI API-Key ([platform.openai.com](https://platform.openai.com)) |
+
+**faster-whisper-Modelle bei `WHISPER_PROVIDER=local`:**
 
 | Modell | Größe | CPU-Zeit/h Audio | Empfehlung |
 |--------|-------|-----------------|------------|
@@ -772,8 +784,12 @@ Häufige Ursachen:
 ### Whisper-Transkription sehr langsam
 
 ```ini
-# In config.env kleineres Modell wählen:
-WHISPER_MODEL=small   # statt medium – halbiert die Transkriptionszeit
+# Option 1: Kleineres Modell (schneller, etwas ungenauer)
+WHISPER_MODEL=small
+
+# Option 2: OpenAI Whisper API (Sekunden statt Minuten, ~$0.36/h)
+WHISPER_PROVIDER=openai
+OPENAI_API_KEY=sk-...
 ```
 
 ### Web-UI zeigt 401 Unauthorized

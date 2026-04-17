@@ -93,7 +93,8 @@ nginx/                   # nginx-Reverse-Proxy-Konfiguration
 - **faster-whisper** (CTranslate2), Modell per `WHISPER_MODEL` konfigurierbar (default: `medium`)
 - Auto-Erkennung GPU (float16) vs. CPU (int8) via `ctranslate2.get_cuda_device_count()`
 - Modell wird gecacht (`_whisper_model_cache`) – nur einmal pro Prozess geladen
-- CPU-Optimierungen: `beam_size=1` (Greedy Decoding), `cpu_threads=6`, `word_timestamps=False` (nicht benötigt) — Whisper's Decoder ist sequenziell, parallele Segmentverarbeitung bringt keinen Gewinn da CTranslate2 einen gemeinsamen Thread-Pool nutzt
+- **Provider:** `WHISPER_PROVIDER=local` (Standard, faster-whisper) oder `WHISPER_PROVIDER=openai` (OpenAI Whisper API, ~$0.36/h, Sekunden statt Minuten)
+- CPU-Optimierungen (nur `local`): `beam_size=1` (Greedy Decoding), `cpu_threads=6`, `word_timestamps=False`
 - Sprache: Deutsch (`language="de"`), VAD-Filter aktiv, kein Kontext über Segmentgrenzen
 - Mehrere Audio-Dateien: Timestamps werden mit Offset zusammengeführt, 2 s Overlap-Toleranz
 - Transkript-Format: `[MM:SS - MM:SS] Text` + `VOLLTEXT:` am Ende
@@ -150,7 +151,9 @@ nginx/                   # nginx-Reverse-Proxy-Konfiguration
 | `TS_SERVER_ID` | `1` | Virtual Server ID |
 | `TS_CHANNEL_ID` | `42` | Standard-Kanal für Aufnahme (0 = alle) |
 | `TS_PORT` | `9987` | TS3-Client-Port (nur für Anzeige in Web-UI) |
-| `WHISPER_MODEL` | `medium` | `small` / `medium` / `large` |
+| `WHISPER_PROVIDER` | `local` | `local` (faster-whisper) oder `openai` (Whisper API, ~$0.36/h) |
+| `WHISPER_MODEL` | `medium` | `small` / `medium` / `large` (nur bei `WHISPER_PROVIDER=local`) |
+| `OPENAI_API_KEY` | – | Nur bei `WHISPER_PROVIDER=openai` (**Pflicht** dann) |
 | `PULSE_SINK` | `tsbot_sink` | PulseAudio Null-Sink Name |
 | `DATA_DIR` | `/opt/tsbot/data` | Sessions-Verzeichnis |
 | `AGENDA_PATH` | `/opt/tsbot/data/agenda.txt` | Pfad zur Server-Agenda |

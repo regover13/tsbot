@@ -37,6 +37,28 @@ def _get_device_and_model(model_name: str | None = None) -> tuple[str, str]:
 
 _whisper_model_cache: dict = {}  # (model_name, device) → WhisperModel
 
+_WHISPER_PROVIDER = os.environ.get("WHISPER_PROVIDER", "local")
+
+
+def _whisper_segmente_openai(audio_pfad: str) -> tuple[list, float]:
+    """Transkription via OpenAI Whisper API (WHISPER_PROVIDER=openai)."""
+    import openai
+    client = openai.OpenAI()
+    with open(audio_pfad, "rb") as f:
+        result = client.audio.transcriptions.create(
+            model="whisper-1",
+            file=f,
+            language="de",
+            response_format="verbose_json",
+            timestamp_granularities=["segment"],
+        )
+    segs = [
+        {"start": s.start, "end": s.end, "text": s.text.strip()}
+        for s in result.segments
+    ]
+    dauer = float(result.duration)
+    return segs, dauer
+
 
 def _whisper_segmente(audio_pfad: str, model_name: str, device: str) -> tuple[list, float]:
     """
@@ -54,6 +76,9 @@ def _whisper_segmente(audio_pfad: str, model_name: str, device: str) -> tuple[li
             cpu_threads=6, local_files_only=True
         )
     model = _whisper_model_cache[cache_key]
+
+    if _WHISPER_PROVIDER == "openai":
+        return _whisper_segmente_openai(audio_pfad)
 
     print(f"Transkribiere: {os.path.basename(audio_pfad)}...")
     segments_gen, info = model.transcribe(
