@@ -37,7 +37,17 @@ def _get_device_and_model(model_name: str | None = None) -> tuple[str, str]:
 
 _whisper_model_cache: dict = {}  # (model_name, device) → WhisperModel
 
-_WHISPER_PROVIDER = os.environ.get("WHISPER_PROVIDER", "local")
+
+def _get_provider() -> str:
+    """Liest den Whisper-Provider dynamisch (Datei hat Vorrang vor Env-Var)."""
+    import json
+    settings_path = Path(os.environ.get("DATA_DIR", "/opt/tsbot/data")) / "whisper_provider.json"
+    if settings_path.exists():
+        try:
+            return json.loads(settings_path.read_text(encoding="utf-8")).get("provider", "local")
+        except Exception:
+            pass
+    return os.environ.get("WHISPER_PROVIDER", "local")
 
 
 def _whisper_segmente_openai(audio_pfad: str) -> tuple[list, float]:
@@ -77,7 +87,7 @@ def _whisper_segmente(audio_pfad: str, model_name: str, device: str) -> tuple[li
         )
     model = _whisper_model_cache[cache_key]
 
-    if _WHISPER_PROVIDER == "openai":
+    if _get_provider() == "openai":
         return _whisper_segmente_openai(audio_pfad)
 
     print(f"Transkribiere: {os.path.basename(audio_pfad)}...")

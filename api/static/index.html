@@ -235,6 +235,30 @@
     }
     .channel-reload:hover { color: var(--text); }
 
+    /* ── Provider Toggle ─────────────────────────── */
+    .toggle-row { display: flex; align-items: center; gap: .75rem; }
+    .toggle-label { font-size: .9rem; color: var(--muted); cursor: pointer; }
+    .toggle-label.active { color: var(--text); font-weight: 600; }
+    .toggle-switch { position: relative; width: 44px; height: 24px; flex-shrink: 0; }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .toggle-track {
+      position: absolute; inset: 0; background: var(--border);
+      border-radius: 24px; cursor: pointer; transition: background .2s;
+    }
+    .toggle-track::before {
+      content: ''; position: absolute;
+      width: 18px; height: 18px; left: 3px; top: 3px;
+      background: var(--muted); border-radius: 50%; transition: transform .2s, background .2s;
+    }
+    .toggle-switch input:checked + .toggle-track { background: var(--orange); }
+    .toggle-switch input:checked + .toggle-track::before { transform: translateX(20px); background: #fff; }
+    .provider-warning {
+      margin-top: .6rem; padding: .5rem .75rem;
+      background: rgba(246,173,85,.12); border: 1px solid var(--orange);
+      border-radius: 6px; font-size: .8rem; color: var(--orange);
+      display: none;
+    }
+
     /* ── Regen Modal ──────────────────────────────── */
     #regen-modal {
       position: fixed; inset: 0; background: rgba(0,0,0,.55);
@@ -289,6 +313,22 @@
       <p id="freeze-line" class="error-line" style="display:none; color:var(--yellow, #f6c90e);">
         ⚠ Freeze erkannt – Segment wurde automatisch neu gestartet.
       </p>
+    </div>
+
+    <!-- Whisper-Provider -->
+    <div class="card">
+      <h2>Transkription</h2>
+      <div class="toggle-row">
+        <span class="toggle-label active" id="lbl-local">Lokales Modell</span>
+        <label class="toggle-switch">
+          <input type="checkbox" id="provider-toggle" onchange="onProviderChange()">
+          <span class="toggle-track"></span>
+        </label>
+        <span class="toggle-label" id="lbl-openai">OpenAI Whisper API</span>
+      </div>
+      <div class="provider-warning" id="provider-warning">
+        ⚠ OpenAI Whisper API: ~0,37 € / Stunde Audio. Kosten werden in deinem OpenAI-Konto berechnet.
+      </div>
     </div>
 
     <!-- Steuerung -->
@@ -469,6 +509,32 @@ const _regenInProgress = new Set();
 const _retranscribeInProgress = new Set();
 const _retranscribeProgress = {};  // session_id → {current_segment, total_segments, eta_sec}
 let _sessions = [];
+
+// ═══════════════════════════════════════════════════════════
+// Whisper-Provider Toggle
+// ═══════════════════════════════════════════════════════════
+async function loadProvider() {
+  const d = await api('/settings/whisper-provider');
+  const isOpenAI = d.provider === 'openai';
+  document.getElementById('provider-toggle').checked = isOpenAI;
+  _updateProviderUI(isOpenAI);
+}
+
+function _updateProviderUI(isOpenAI) {
+  document.getElementById('lbl-local').classList.toggle('active', !isOpenAI);
+  document.getElementById('lbl-openai').classList.toggle('active', isOpenAI);
+  document.getElementById('provider-warning').style.display = isOpenAI ? 'block' : 'none';
+}
+
+async function onProviderChange() {
+  const isOpenAI = document.getElementById('provider-toggle').checked;
+  _updateProviderUI(isOpenAI);
+  await api('/settings/whisper-provider', {
+    method: 'PUT',
+    body: JSON.stringify({ provider: isOpenAI ? 'openai' : 'local' })
+  });
+  toast(isOpenAI ? 'OpenAI Whisper API aktiviert' : 'Lokales Modell aktiviert');
+}
 
 // ═══════════════════════════════════════════════════════════
 // Tabs
@@ -1225,6 +1291,7 @@ function escHtml(s) {
   loadProtocols();
   loadChannels();
   loadExtra();
+  loadProvider();
 })();
 </script>
 </body>

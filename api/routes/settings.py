@@ -8,6 +8,7 @@ Zweistufiges System:
 Der Factory-Fallback DEFAULT_INSTRUKTIONEN greift nur wenn noch keine Default-Datei existiert.
 """
 
+import json
 import os
 from pathlib import Path
 
@@ -16,10 +17,12 @@ from pydantic import BaseModel
 
 router = APIRouter()
 
+DATA_DIR     = Path(os.environ.get("DATA_DIR", "/opt/tsbot/data"))
 EXTRA_PATH   = Path(os.environ.get("EXTRA_INSTRUKTIONEN_PATH",
                                    "/opt/tsbot/data/extra_instruktionen.txt"))
 DEFAULT_PATH = Path(os.environ.get("DEFAULT_INSTRUKTIONEN_PATH",
                                    "/opt/tsbot/data/extra_instruktionen_default.txt"))
+PROVIDER_FILE = DATA_DIR / "whisper_provider.json"
 
 DEFAULT_INSTRUKTIONEN = """\
 VERHALTENSREGELN:
@@ -93,3 +96,26 @@ async def put_extra_default(body: ExtraBody):
     DEFAULT_PATH.parent.mkdir(parents=True, exist_ok=True)
     DEFAULT_PATH.write_text(body.text, encoding="utf-8")
     return {"message": "Standard-Vorlage gespeichert.", "text": body.text}
+
+
+# ── Whisper-Provider ──────────────────────────────────────
+
+class ProviderBody(BaseModel):
+    provider: str  # "local" | "openai"
+
+
+@router.get("/whisper-provider", summary="Whisper-Provider laden")
+async def get_whisper_provider():
+    if PROVIDER_FILE.exists():
+        return json.loads(PROVIDER_FILE.read_text(encoding="utf-8"))
+    return {"provider": os.environ.get("WHISPER_PROVIDER", "local")}
+
+
+@router.put("/whisper-provider", summary="Whisper-Provider speichern")
+async def put_whisper_provider(body: ProviderBody):
+    if body.provider not in ("local", "openai"):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="Provider muss 'local' oder 'openai' sein.")
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    PROVIDER_FILE.write_text(json.dumps({"provider": body.provider}), encoding="utf-8")
+    return {"provider": body.provider}

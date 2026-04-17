@@ -93,7 +93,8 @@ nginx/                   # nginx-Reverse-Proxy-Konfiguration
 - **faster-whisper** (CTranslate2), Modell per `WHISPER_MODEL` konfigurierbar (default: `medium`)
 - Auto-Erkennung GPU (float16) vs. CPU (int8) via `ctranslate2.get_cuda_device_count()`
 - Modell wird gecacht (`_whisper_model_cache`) – nur einmal pro Prozess geladen
-- **Provider:** `WHISPER_PROVIDER=local` (Standard, faster-whisper) oder `WHISPER_PROVIDER=openai` (OpenAI Whisper API, ~$0.36/h, Sekunden statt Minuten)
+- **Provider:** umschaltbar per Toggle im Dashboard (Aufnahme-Tab) oder via `WHISPER_PROVIDER` Env-Var. Gespeichert in `/opt/tsbot/data/whisper_provider.json` (hat Vorrang vor Env-Var, kein Container-Restart nötig)
+- Provider `local`: faster-whisper, kostenlos; Provider `openai`: OpenAI Whisper API (~0,37 €/h Audio, Sekunden statt Minuten)
 - CPU-Optimierungen (nur `local`): `beam_size=1` (Greedy Decoding), `cpu_threads=6`, `word_timestamps=False`
 - Sprache: Deutsch (`language="de"`), VAD-Filter aktiv, kein Kontext über Segmentgrenzen
 - Mehrere Audio-Dateien: Timestamps werden mit Offset zusammengeführt, 2 s Overlap-Toleranz
@@ -130,6 +131,7 @@ nginx/                   # nginx-Reverse-Proxy-Konfiguration
 | `/protocols/{id}/regenerate` | POST | Protokoll aus bestehendem Transkript neu erstellen |
 | `/protocols/{id}/regen-status` | GET | Status einer laufenden Regenerierung |
 | `/protocols/{id}/retranscribe` | POST | Transkription aus Audio-Segmenten neu starten (inkl. Sprecher-Annotation) |
+| `/settings/whisper-provider` | GET / PUT | Aktiven Whisper-Provider laden / speichern (`local` oder `openai`) |
 | `/protocols/{id}/retranscribe-status` | GET | Status: `{status, current_segment, total_segments, eta_sec}` — ETA initial aus Dateigröße, danach aus Ist-Geschwindigkeit |
 | `/agenda` | GET / PUT | Server-Agenda laden / speichern |
 | `/channels` | GET | TS3-Kanal-Liste (30 s Cache, `force=true` umgeht Cache) |
@@ -151,7 +153,7 @@ nginx/                   # nginx-Reverse-Proxy-Konfiguration
 | `TS_SERVER_ID` | `1` | Virtual Server ID |
 | `TS_CHANNEL_ID` | `42` | Standard-Kanal für Aufnahme (0 = alle) |
 | `TS_PORT` | `9987` | TS3-Client-Port (nur für Anzeige in Web-UI) |
-| `WHISPER_PROVIDER` | `local` | `local` (faster-whisper) oder `openai` (Whisper API, ~$0.36/h) |
+| `WHISPER_PROVIDER` | `local` | `local` oder `openai` — Fallback wenn keine `whisper_provider.json` existiert |
 | `WHISPER_MODEL` | `medium` | `small` / `medium` / `large` (nur bei `WHISPER_PROVIDER=local`) |
 | `OPENAI_API_KEY` | – | Nur bei `WHISPER_PROVIDER=openai` (**Pflicht** dann) |
 | `PULSE_SINK` | `tsbot_sink` | PulseAudio Null-Sink Name |
