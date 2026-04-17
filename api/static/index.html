@@ -1116,6 +1116,7 @@ async function submitRetranscribe() {
     const sid = _regenSessionId;
     _retranscribeInProgress.add(sid);
     closeRegenModal();
+    renderProtocols(_sessions);
     _pollRetranscribe(sid);
   } catch(e) {
     toast('Fehler: ' + e.message, 'error');
