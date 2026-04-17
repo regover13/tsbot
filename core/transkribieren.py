@@ -162,7 +162,7 @@ def transkribiere_mehrere(audio_pfade: list[str], ausgabe_ordner: str,
         print(f"\n[{idx+1}/{total}] {os.path.basename(pfad)}")
         return idx, _whisper_segmente(pfad, model_name, device)
 
-    with ThreadPoolExecutor(max_workers=total) as executor:
+    with ThreadPoolExecutor(max_workers=min(total, os.cpu_count() or 4)) as executor:
         futures = {executor.submit(_transkribiere_segment, idx, pfad): idx
                    for idx, pfad in enumerate(sorted_pfade)}
         for future in as_completed(futures):
