@@ -2,13 +2,16 @@
 Protokoll-Endpoints: GET /protocols, GET /protocols/{session}/{file},
                      DELETE /protocols/{session},
                      POST /protocols/{session}/regenerate,
-                     GET /protocols/{session}/regen-status
+                     GET /protocols/{session}/regen-status,
+                     POST /protocols/{session}/retranscribe,
+                     GET /protocols/{session}/retranscribe-status
 """
 
 import asyncio
 import functools
 import json
 import os
+import re
 import shutil
 from pathlib import Path
 
@@ -21,6 +24,7 @@ router = APIRouter()
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/opt/tsbot/data"))
 
 _regen_tasks: dict[str, dict] = {}  # {session_id: {"status": "running"|"done"|"error", "error": ""}}
+_retranscribe_tasks: dict[str, dict] = {}  # {session_id: {"status": "running"|"done"|"error", "error": ""}}
 
 
 class RegenerateRequest(BaseModel):
@@ -142,6 +146,89 @@ async def regenerate_protocol(session_id: str, body: RegenerateRequest):
 async def regen_status(session_id: str):
     """Gibt den aktuellen Status der Protokoll-Neuerstellung zurück."""
     return _regen_tasks.get(session_id, {"status": "idle", "error": ""})
+
+
+async def _run_retranscribe(session_id: str, session_dir: Path):
+    """Hintergrundaufgabe: Transkription aus Audio-Segmenten neu starten."""
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent.parent.parent / "core"))
+    from transkribieren import transkribiere_mehrere
+    try:
+        audio_paths = sorted(session_dir.glob("audio_*.mp3"))
+        if not audio_paths:
+            audio_paths = sorted(session_dir.glob("audio.mp3"))
+        if not audio_paths:
+            raise ValueError("Keine Audio-Dateien gefunden.")
+
+        fn = functools.partial(
+            transkribiere_mehrere,
+            [str(p) for p in audio_paths],
+            str(session_dir),
+        )
+        transcript_path = Path(await asyncio.get_running_loop().run_in_executor(None, fn))
+
+        # Sprecher-Annotation falls Talk-Log vorhanden
+        talk_log_path = session_dir / "talk_log.json"
+        if talk_log_path.exists():
+            talk_log = json.loads(talk_log_path.read_text(encoding="utf-8"))
+            if talk_log:
+                def _annotate():
+                    def dominant_speaker(start_sec, end_sec):
+                        overlaps: dict = {}
+                        for entry in talk_log:
+                            overlap = min(end_sec, entry["end_sec"]) - max(start_sec, entry["start_sec"])
+                            if overlap > 0:
+                                raw = entry["name"].split("/")[0].strip()
+                                raw = re.sub(r'\s*\(.*?\)', '', raw).strip()
+                                raw = re.sub(r'\s+FRS\w+.*$', '', raw).strip()
+                                overlaps[raw] = overlaps.get(raw, 0) + overlap
+                        return max(overlaps, key=overlaps.get) if overlaps else ""
+
+                    seg_re = re.compile(r'\[(\d{2}):(\d{2}) - (\d{2}):(\d{2})\] (.+)')
+                    lines = transcript_path.read_text(encoding="utf-8").splitlines()
+                    annotated = []
+                    for line in lines:
+                        m = seg_re.match(line)
+                        if m:
+                            m1, s1, m2, s2, text = m.groups()
+                            spk = dominant_speaker(int(m1)*60+int(s1), int(m2)*60+int(s2))
+                            annotated.append(f"[{m1}:{s1} - {m2}:{s2}] {spk+': ' if spk else ''}{text}")
+                        else:
+                            annotated.append(line)
+                    transcript_path.write_text("\n".join(annotated), encoding="utf-8")
+
+                await asyncio.get_running_loop().run_in_executor(None, _annotate)
+
+        _retranscribe_tasks[session_id] = {"status": "done", "error": ""}
+    except Exception as e:
+        _retranscribe_tasks[session_id] = {"status": "error", "error": str(e)}
+
+
+@router.post("/{session_id}/retranscribe", summary="Transkription neu starten")
+async def retranscribe(session_id: str):
+    """Transkribiert die vorhandenen Audio-Segmente einer Session neu."""
+    if ".." in session_id or "/" in session_id:
+        raise HTTPException(status_code=400, detail="Ungültige Session-ID.")
+
+    session_dir = DATA_DIR / "sessions" / session_id
+    if not session_dir.exists():
+        raise HTTPException(status_code=404, detail="Session nicht gefunden.")
+
+    if not sorted(session_dir.glob("audio_*.mp3")) and not sorted(session_dir.glob("audio.mp3")):
+        raise HTTPException(status_code=422, detail="Keine Audio-Dateien vorhanden.")
+
+    if _retranscribe_tasks.get(session_id, {}).get("status") == "running":
+        raise HTTPException(status_code=409, detail="Transkription läuft bereits.")
+
+    _retranscribe_tasks[session_id] = {"status": "running", "error": ""}
+    asyncio.create_task(_run_retranscribe(session_id, session_dir))
+    return {"message": "Transkription gestartet."}
+
+
+@router.get("/{session_id}/retranscribe-status", summary="Transkriptions-Status abfragen")
+async def retranscribe_status(session_id: str):
+    """Gibt den aktuellen Status der Neu-Transkription zurück."""
+    return _retranscribe_tasks.get(session_id, {"status": "idle", "error": ""})
 
 
 @router.get("/{session_id}/{filename}", summary="Protokoll, Transkript oder Audio herunterladen")

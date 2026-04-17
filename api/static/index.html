@@ -414,14 +414,30 @@
     <div class="modal-box">
       <h3>Protokoll neu erstellen</h3>
       <p id="regen-session-label" style="color:var(--muted);margin-bottom:1rem;font-size:.85rem"></p>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.3rem">
-        <label style="font-size:.78rem;color:var(--muted)">Zusätzliche Instruktionen (Prompt)</label>
-        <button class="btn btn-ghost" style="font-size:.75rem;padding:.2rem .6rem" onclick="resetRegenExtraToDefault()">↺ Standard</button>
+
+      <!-- Warnung: kein Transkript -->
+      <div id="regen-no-transcript" style="display:none">
+        <div style="background:#2d1a1a;border:1px solid var(--red);border-radius:.5rem;padding:1rem;margin-bottom:1rem">
+          <p style="color:var(--red);font-weight:600;margin-bottom:.4rem">⚠ Kein Transkript vorhanden</p>
+          <p style="font-size:.85rem;color:var(--muted)">Bevor das Protokoll erstellt werden kann, muss das Audio zuerst transkribiert werden. Dies kann je nach Aufnahmelänge mehrere Minuten dauern.</p>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-ghost" onclick="closeRegenModal()">Abbrechen</button>
+          <button class="btn btn-green" id="retranscribe-btn" onclick="submitRetranscribe()">▶ Transkription starten</button>
+        </div>
       </div>
-      <textarea id="regen-extra" rows="6" style="width:100%;margin:.5rem 0 1rem"></textarea>
-      <div class="btn-row">
-        <button class="btn btn-ghost" onclick="closeRegenModal()">Abbrechen</button>
-        <button class="btn btn-green" id="regen-submit-btn" onclick="submitRegen()">🔄 docx neu erstellen</button>
+
+      <!-- Normale Ansicht -->
+      <div id="regen-normal" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.3rem">
+          <label style="font-size:.78rem;color:var(--muted)">Zusätzliche Instruktionen (Prompt)</label>
+          <button class="btn btn-ghost" style="font-size:.75rem;padding:.2rem .6rem" onclick="resetRegenExtraToDefault()">↺ Standard</button>
+        </div>
+        <textarea id="regen-extra" rows="6" style="width:100%;margin:.5rem 0 1rem"></textarea>
+        <div class="btn-row">
+          <button class="btn btn-ghost" onclick="closeRegenModal()">Abbrechen</button>
+          <button class="btn btn-green" id="regen-submit-btn" onclick="submitRegen()">🔄 docx neu erstellen</button>
+        </div>
       </div>
     </div>
   </div>
@@ -450,6 +466,7 @@ let _channelNames = {};   // id → name, befüllt von loadChannels()
 let _currentState = 'IDLE';
 let _regenSessionId = null;
 const _regenInProgress = new Set();
+const _retranscribeInProgress = new Set();
 let _sessions = [];
 
 // ═══════════════════════════════════════════════════════════
@@ -1023,10 +1040,22 @@ function openRegenModal(sessionId) {
   _regenSessionId = sessionId;
   document.getElementById('regen-session-label').textContent =
     (s && s.thema ? s.thema + ' · ' : '') + sessionId;
-  document.getElementById('regen-extra').value = (s && s.extra_instruktionen) || '';
-  const btn = document.getElementById('regen-submit-btn');
-  btn.disabled = false;
-  btn.textContent = '🔄 docx neu erstellen';
+
+  const hasTranscript = s && s.transkripte && s.transkripte.length > 0;
+  document.getElementById('regen-no-transcript').style.display = hasTranscript ? 'none' : 'block';
+  document.getElementById('regen-normal').style.display = hasTranscript ? 'block' : 'none';
+
+  if (hasTranscript) {
+    document.getElementById('regen-extra').value = (s && s.extra_instruktionen) || '';
+    const btn = document.getElementById('regen-submit-btn');
+    btn.disabled = false;
+    btn.textContent = '🔄 docx neu erstellen';
+  } else {
+    const btn = document.getElementById('retranscribe-btn');
+    btn.disabled = false;
+    btn.textContent = '▶ Transkription starten';
+  }
+
   document.getElementById('regen-modal').style.display = 'flex';
 }
 
@@ -1065,6 +1094,46 @@ async function submitRegen() {
     btn.disabled = false;
     btn.textContent = '🔄 docx neu erstellen';
   }
+}
+
+async function submitRetranscribe() {
+  if (!_regenSessionId) return;
+  const btn = document.getElementById('retranscribe-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Läuft...';
+  try {
+    await api(`/protocols/${_regenSessionId}/retranscribe`, { method: 'POST' });
+    const sid = _regenSessionId;
+    _retranscribeInProgress.add(sid);
+    closeRegenModal();
+    _pollRetranscribe(sid);
+  } catch(e) {
+    toast('Fehler: ' + e.message, 'error');
+    btn.disabled = false;
+    btn.textContent = '▶ Transkription starten';
+  }
+}
+
+function _pollRetranscribe(sessionId) {
+  setTimeout(async () => {
+    try {
+      const d = await api(`/protocols/${sessionId}/retranscribe-status`);
+      if (d.status === 'done') {
+        toast('Transkription abgeschlossen. Protokoll kann jetzt erstellt werden.', 'ok');
+        _retranscribeInProgress.delete(sessionId);
+        await loadProtocols();
+        openRegenModal(sessionId);
+      } else if (d.status === 'error') {
+        toast('Transkriptionsfehler: ' + (d.error || 'Unbekannter Fehler'), 'error');
+        _retranscribeInProgress.delete(sessionId);
+        loadProtocols();
+      } else {
+        _pollRetranscribe(sessionId);
+      }
+    } catch(e) {
+      _pollRetranscribe(sessionId);
+    }
+  }, 5000);
 }
 
 function _pollRegen(sessionId) {
