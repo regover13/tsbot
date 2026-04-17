@@ -993,10 +993,11 @@ function renderProtocols(sessions) {
           ${(() => {
             const p = _retranscribeProgress[s.session_id];
             if (!isRetranscribing || !p || !p.total_segments) return '';
-            const seg = `${p.current_segment}/${p.total_segments}`;
+            const current = p.current_segment + 1;
+            const seg = `${Math.min(current, p.total_segments)}/${p.total_segments}`;
             const eta = p.eta_sec != null && p.eta_sec > 0
               ? ` · ~${Math.round(p.eta_sec / 60)} min`
-              : '';
+              : ' · läuft...';
             return `<span style="font-size:.72rem;color:var(--muted)">Segment ${seg}${eta}</span>`;
           })()}
           <button class="btn btn-danger"
