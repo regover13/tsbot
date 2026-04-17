@@ -511,12 +511,18 @@ Liste aller abgeschlossenen Sitzungen mit Download-Links für:
 - `*_transkript_*.txt` — Volltranskript mit Zeitstempeln
 - `audio.mp3` — Original-Aufnahme
 
-**🔄 docx neu erstellen** öffnet ein Modal mit den gespeicherten Instruktionen dieser Session.
-Nach Anpassung und Bestätigung wird Claude das Protokoll neu generieren – ohne neue Aufnahme
-oder Transkription. Transkript, Teilnehmer und Agenda bleiben erhalten; das bestehende `.docx`
-wird überschrieben. Der Button wechselt zu „⏳ Läuft..." bis der Vorgang abgeschlossen ist.
-Im Modal ist **↺ Standard** verfügbar: lädt die globale Standard-Vorlage in die Textarea,
-ohne die gespeicherten Session-Instruktionen zu überschreiben.
+**🔄 docx neu erstellen** prüft zunächst ob ein Transkript vorhanden ist:
+
+- **Transkript vorhanden** → Modal mit gespeicherten Instruktionen öffnet sich.
+  Nach Anpassung und Bestätigung generiert Claude das Protokoll neu – ohne neue Aufnahme oder
+  Transkription. Transkript, Teilnehmer und Agenda bleiben erhalten; das bestehende `.docx`
+  wird überschrieben. Der Button wechselt zu „⏳ Läuft..." bis der Vorgang abgeschlossen ist.
+  Im Modal ist **↺ Standard** verfügbar: lädt die globale Standard-Vorlage in die Textarea.
+- **Kein Transkript vorhanden** (z.B. nach Container-Neustart während Transkription) →
+  Warnmeldung mit **▶ Transkription starten**-Button. Die Transkription läuft im Hintergrund;
+  der Button zeigt „⏳ Transkribiert... · Segment X/Y · noch ~N min". Nach Abschluss öffnet
+  sich das Protokoll-Modal automatisch. Der Fortschritt wird alle 5 Sekunden aktualisiert
+  und bleibt auch nach Seitenreload sichtbar.
 
 Über den **🗑 Löschen**-Button wird eine komplette Session unwiderruflich entfernt
 (Audio, Transkript, Protokoll und Metadaten).
