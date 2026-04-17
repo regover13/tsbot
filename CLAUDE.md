@@ -98,6 +98,7 @@ nginx/                   # nginx-Reverse-Proxy-Konfiguration
 - Transkript-Format: `[MM:SS - MM:SS] Text` + `VOLLTEXT:` am Ende
 - Sprecher-Annotation: Nachträgliche Annotation via `talk_log.json` (dominant speaker pro Zeitfenster)
 - **Keine** pyannote.audio / Diarization – Speaker-Tracking läuft über ClientQuery-Events
+- `progress_callback(current, total, elapsed_sec, eta_sec)` optional – wird nach jedem fertigen Segment aufgerufen
 
 ## Protokollerstellung (`core/protokoll_erstellen.py`)
 
@@ -126,7 +127,7 @@ nginx/                   # nginx-Reverse-Proxy-Konfiguration
 | `/protocols/{id}/regenerate` | POST | Protokoll aus bestehendem Transkript neu erstellen |
 | `/protocols/{id}/regen-status` | GET | Status einer laufenden Regenerierung |
 | `/protocols/{id}/retranscribe` | POST | Transkription aus Audio-Segmenten neu starten (inkl. Sprecher-Annotation) |
-| `/protocols/{id}/retranscribe-status` | GET | Status einer laufenden Neu-Transkription |
+| `/protocols/{id}/retranscribe-status` | GET | Status: `{status, current_segment, total_segments, eta_sec}` — ETA initial aus Dateigröße, danach aus Ist-Geschwindigkeit |
 | `/agenda` | GET / PUT | Server-Agenda laden / speichern |
 | `/channels` | GET | TS3-Kanal-Liste (30 s Cache, `force=true` umgeht Cache) |
 | `/settings/extra` | GET / PUT | Aktuelle Extra-Instruktionen laden / speichern |
@@ -198,5 +199,8 @@ docker pull ghcr.io/regover13/tsbot:latest
 - Windows-`.bat`-Dateien sind nur für lokalen Betrieb, nicht für den Server relevant
 - Der TS3-Client läuft headless unter Xvfb `:99` (kein physisches Display)
 - Die FastAPI-App stellt das Web-Dashboard unter `/` aus `api/static/index.html` bereit
+- **„docx neu erstellen"** prüft ob Transkript vorhanden ist; fehlt es, erscheint eine Warnmeldung mit „Transkription starten"-Button
+- Während Neu-Transkription: Button zeigt „⏳ Transkribiert..." + Fortschritt „Segment X/Y · noch ~N min" (polling alle 5 s)
+- Nach Seitenreload: laufende Retranscriptions werden via `/retranscribe-status` wiederhergestellt
 - **Kein** pyannote.audio / whisperx / USE_DIARIZATION / HF_TOKEN – Sprecher-Tracking läuft ausschließlich über ClientQuery
 - Vor git push immer `/status` prüfen: nur bei `state == IDLE` pushen
