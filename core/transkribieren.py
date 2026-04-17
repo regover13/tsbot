@@ -9,6 +9,7 @@ Unterstützt Einzel- und Mehrdatei-Transkription (segmentierte Aufnahmen).
 import sys
 import os
 from datetime import datetime
+from pathlib import Path
 
 
 # ── Hilfsfunktionen ───────────────────────────────────────────
