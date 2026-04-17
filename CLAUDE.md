@@ -125,6 +125,8 @@ nginx/                   # nginx-Reverse-Proxy-Konfiguration
 | `/protocols/{id}` | DELETE | Session-Verzeichnis löschen |
 | `/protocols/{id}/regenerate` | POST | Protokoll aus bestehendem Transkript neu erstellen |
 | `/protocols/{id}/regen-status` | GET | Status einer laufenden Regenerierung |
+| `/protocols/{id}/retranscribe` | POST | Transkription aus Audio-Segmenten neu starten (inkl. Sprecher-Annotation) |
+| `/protocols/{id}/retranscribe-status` | GET | Status einer laufenden Neu-Transkription |
 | `/agenda` | GET / PUT | Server-Agenda laden / speichern |
 | `/channels` | GET | TS3-Kanal-Liste (30 s Cache, `force=true` umgeht Cache) |
 | `/settings/extra` | GET / PUT | Aktuelle Extra-Instruktionen laden / speichern |
