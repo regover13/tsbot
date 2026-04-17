@@ -923,16 +923,24 @@ async function loadProtocols() {
     const sessions = d.sessions || [];
 
     // Nach Seiten-Reload: laufende Regens vom Server wiederherstellen
-    const statusChecks = sessions.map(s =>
+    const statusChecks = sessions.flatMap(s => [
       api(`/protocols/${s.session_id}/regen-status`)
-        .then(r => ({ sid: s.session_id, status: r.status }))
-        .catch(() => ({ sid: s.session_id, status: 'idle' }))
-    );
+        .then(r => ({ sid: s.session_id, type: 'regen', status: r.status }))
+        .catch(() => ({ sid: s.session_id, type: 'regen', status: 'idle' })),
+      api(`/protocols/${s.session_id}/retranscribe-status`)
+        .then(r => ({ sid: s.session_id, type: 'retranscribe', status: r.status }))
+        .catch(() => ({ sid: s.session_id, type: 'retranscribe', status: 'idle' })),
+    ]);
     const statuses = await Promise.all(statusChecks);
-    statuses.forEach(({ sid, status }) => {
-      if (status === 'running' && !_regenInProgress.has(sid)) {
-        _regenInProgress.add(sid);
-        _pollRegen(sid);
+    statuses.forEach(({ sid, type, status }) => {
+      if (status === 'running') {
+        if (type === 'regen' && !_regenInProgress.has(sid)) {
+          _regenInProgress.add(sid);
+          _pollRegen(sid);
+        } else if (type === 'retranscribe' && !_retranscribeInProgress.has(sid)) {
+          _retranscribeInProgress.add(sid);
+          _pollRetranscribe(sid);
+        }
       }
     });
 
@@ -963,7 +971,9 @@ function renderProtocols(sessions) {
     ).join('');
 
     const allLinks = docLinks + txtLinks + audioLinks;
-    const isRegen  = _regenInProgress.has(s.session_id);
+    const isRegen          = _regenInProgress.has(s.session_id);
+    const isRetranscribing = _retranscribeInProgress.has(s.session_id);
+    const isBusy           = isRegen || isRetranscribing;
 
     li.innerHTML = `
       <div class="prot-header">
@@ -976,8 +986,8 @@ function renderProtocols(sessions) {
             id="regen-btn-${escHtml(s.session_id)}"
             data-session-id="${escHtml(s.session_id)}"
             onclick="openRegenModal(this.dataset.sessionId)"
-            ${isRegen ? 'disabled' : ''}>
-            ${isRegen ? '⏳ Läuft...' : '🔄 docx neu erstellen'}
+            ${isBusy ? 'disabled' : ''}>
+            ${isRetranscribing ? '⏳ Transkribiert...' : isRegen ? '⏳ Läuft...' : '🔄 docx neu erstellen'}
           </button>
           <button class="btn btn-danger"
             onclick="deleteSession('${escHtml(s.session_id)}', this)">
