@@ -51,7 +51,7 @@ def _whisper_segmente(audio_pfad: str, model_name: str, device: str) -> tuple[li
         print(f"Lade Whisper-Modell ({model_name})...")
         _whisper_model_cache[cache_key] = WhisperModel(
             model_name, device=device, compute_type=compute_type,
-            local_files_only=True
+            cpu_threads=6, local_files_only=True
         )
     model = _whisper_model_cache[cache_key]
 
@@ -59,7 +59,8 @@ def _whisper_segmente(audio_pfad: str, model_name: str, device: str) -> tuple[li
     segments_gen, info = model.transcribe(
         audio_pfad,
         language="de",
-        word_timestamps=True,
+        beam_size=1,
+        word_timestamps=False,
         vad_filter=True,
         condition_on_previous_text=False,
     )

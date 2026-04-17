@@ -93,12 +93,14 @@ nginx/                   # nginx-Reverse-Proxy-Konfiguration
 - **faster-whisper** (CTranslate2), Modell per `WHISPER_MODEL` konfigurierbar (default: `medium`)
 - Auto-Erkennung GPU (float16) vs. CPU (int8) via `ctranslate2.get_cuda_device_count()`
 - Modell wird gecacht (`_whisper_model_cache`) – nur einmal pro Prozess geladen
+- CPU-Optimierungen: `beam_size=1` (Greedy Decoding, ~2–3× schneller), `cpu_threads=6` (alle Kerne), `word_timestamps=False` (nicht benötigt)
 - Sprache: Deutsch (`language="de"`), VAD-Filter aktiv, kein Kontext über Segmentgrenzen
 - Mehrere Audio-Dateien: Timestamps werden mit Offset zusammengeführt, 2 s Overlap-Toleranz
 - Transkript-Format: `[MM:SS - MM:SS] Text` + `VOLLTEXT:` am Ende
 - Sprecher-Annotation: Nachträgliche Annotation via `talk_log.json` (dominant speaker pro Zeitfenster)
 - **Keine** pyannote.audio / Diarization – Speaker-Tracking läuft über ClientQuery-Events
 - `progress_callback(current, total, elapsed_sec, eta_sec)` optional – wird nach jedem fertigen Segment aufgerufen
+- **Docker CPU Watchdog** (`/opt/docker-watchdog/watchdog.sh`): tsbot-Limit auf 5500% gesetzt – Whisper-Last löst keinen Auto-Restart aus
 
 ## Protokollerstellung (`core/protokoll_erstellen.py`)
 
