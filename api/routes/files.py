@@ -160,10 +160,25 @@ async def _run_retranscribe(session_id: str, session_dir: Path):
         if not audio_paths:
             raise ValueError("Keine Audio-Dateien gefunden.")
 
+        total_segments = len(audio_paths)
+        _retranscribe_tasks[session_id].update({
+            "current_segment": 0,
+            "total_segments": total_segments,
+            "eta_sec": None,
+        })
+
+        def _progress(current, total, elapsed, eta):
+            _retranscribe_tasks[session_id].update({
+                "current_segment": current,
+                "total_segments": total,
+                "eta_sec": round(eta),
+            })
+
         fn = functools.partial(
             transkribiere_mehrere,
             [str(p) for p in audio_paths],
             str(session_dir),
+            progress_callback=_progress,
         )
         transcript_path = Path(await asyncio.get_running_loop().run_in_executor(None, fn))
 

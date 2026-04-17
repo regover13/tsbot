@@ -122,7 +122,8 @@ def transkribiere(audio_pfad: str, ausgabe_ordner: str = None, model_name: str =
 
 
 def transkribiere_mehrere(audio_pfade: list[str], ausgabe_ordner: str,
-                           model_name: str = None) -> str:
+                           model_name: str = None,
+                           progress_callback=None) -> str:
     """
     Transkribiert mehrere Audiodateien (Segmente einer Aufnahme) und
     fügt sie zu einem einzigen Transkript zusammen.
@@ -130,8 +131,11 @@ def transkribiere_mehrere(audio_pfade: list[str], ausgabe_ordner: str,
     Timestamps werden durch Offset (kumulierte Dauer) korrekt verschoben.
     Eine 1,5 s Überlappung zwischen Segmenten wird durch Duplikat-Filter entfernt.
 
+    progress_callback(current, total, elapsed_sec) wird nach jedem Segment aufgerufen.
+
     Gibt den Pfad zur erzeugten TXT-Datei zurück.
     """
+    import time
     if not audio_pfade:
         raise ValueError("Keine Audiodateien angegeben.")
 
@@ -143,9 +147,12 @@ def transkribiere_mehrere(audio_pfade: list[str], ausgabe_ordner: str,
     alle_segs: list[dict] = []
     offset = 0.0
     OVERLAP_TOLERANZ = 2.0  # Sekunden – Überlappungsbereich überspringen
+    sorted_pfade = sorted(audio_pfade)
+    total = len(sorted_pfade)
+    start_time = time.time()
 
-    for pfad in sorted(audio_pfade):
-        print(f"\n[{sorted(audio_pfade).index(pfad)+1}/{len(audio_pfade)}] {os.path.basename(pfad)}")
+    for idx, pfad in enumerate(sorted_pfade):
+        print(f"\n[{idx+1}/{total}] {os.path.basename(pfad)}")
         segs, dauer = _whisper_segmente(pfad, model_name, device)
 
         for seg in segs:
@@ -165,6 +172,11 @@ def transkribiere_mehrere(audio_pfade: list[str], ausgabe_ordner: str,
             })
 
         offset += dauer
+        if progress_callback:
+            elapsed = time.time() - start_time
+            avg = elapsed / (idx + 1)
+            eta = avg * (total - idx - 1)
+            progress_callback(idx + 1, total, elapsed, eta)
 
     volltext = " ".join(s["text"] for s in alle_segs)
 

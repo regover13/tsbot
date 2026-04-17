@@ -467,6 +467,7 @@ let _currentState = 'IDLE';
 let _regenSessionId = null;
 const _regenInProgress = new Set();
 const _retranscribeInProgress = new Set();
+const _retranscribeProgress = {};  // session_id → {current_segment, total_segments, eta_sec}
 let _sessions = [];
 
 // ═══════════════════════════════════════════════════════════
@@ -989,6 +990,15 @@ function renderProtocols(sessions) {
             ${isBusy ? 'disabled' : ''}>
             ${isRetranscribing ? '⏳ Transkribiert...' : isRegen ? '⏳ Läuft...' : '🔄 docx neu erstellen'}
           </button>
+          ${(() => {
+            const p = _retranscribeProgress[s.session_id];
+            if (!isRetranscribing || !p || !p.total_segments) return '';
+            const seg = `${p.current_segment}/${p.total_segments}`;
+            const eta = p.eta_sec != null && p.eta_sec > 0
+              ? ` · ~${Math.round(p.eta_sec / 60)} min`
+              : '';
+            return `<span style="font-size:.72rem;color:var(--muted)">Segment ${seg}${eta}</span>`;
+          })()}
           <button class="btn btn-danger"
             onclick="deleteSession('${escHtml(s.session_id)}', this)">
             🗑 Löschen
@@ -1132,13 +1142,19 @@ function _pollRetranscribe(sessionId) {
       if (d.status === 'done') {
         toast('Transkription abgeschlossen. Protokoll kann jetzt erstellt werden.', 'ok');
         _retranscribeInProgress.delete(sessionId);
+        delete _retranscribeProgress[sessionId];
         await loadProtocols();
         openRegenModal(sessionId);
       } else if (d.status === 'error') {
         toast('Transkriptionsfehler: ' + (d.error || 'Unbekannter Fehler'), 'error');
         _retranscribeInProgress.delete(sessionId);
+        delete _retranscribeProgress[sessionId];
         loadProtocols();
       } else {
+        if (d.total_segments > 0) {
+          _retranscribeProgress[sessionId] = d;
+          renderProtocols(_sessions);
+        }
         _pollRetranscribe(sessionId);
       }
     } catch(e) {
