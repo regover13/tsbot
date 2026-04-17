@@ -94,10 +94,10 @@ def _whisper_segmente(audio_pfad: str, model_name: str, device: str) -> tuple[li
     segments_gen, info = model.transcribe(
         audio_pfad,
         language="de",
-        beam_size=1,
+        beam_size=5,
         word_timestamps=False,
         vad_filter=True,
-        condition_on_previous_text=False,
+        condition_on_previous_text=True,
     )
 
     segs = [
