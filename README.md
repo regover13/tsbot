@@ -10,7 +10,7 @@ Protokolle benötigen, ohne manuell mitschreiben zu müssen.**
 ## Features
 
 - **Segmentierte Aufnahme** – PulseAudio Null-Sink (Linux) oder VB-Cable (Windows), headless im Hintergrund. Aufnahme in rollierenden 10-Minuten-Segmenten (`audio_001.mp3`, `audio_002.mp3`, …) mit 1,5 s Overlap; Freeze-Watchdog erkennt eingefrorenes ffmpeg und rotiert automatisch. Format: 16 kHz mono 32 kbps MP3 (Whisper-optimiert). ffmpeg läuft mit SCHED_FIFO Echtzeit-Scheduling (`chrt -f 50`) – kann nicht durch andere Prozesse von der CPU verdrängt werden
-- **Transkription mit [faster-whisper](https://github.com/SYSTRAN/faster-whisper)** – CTranslate2-Backend, 3–5× schneller als openai-whisper. Läuft lokal auf dem Server, kein API-Call; Modell `medium` als Standard. CPU-optimiert: Greedy Decoding (`beam_size=1`), alle 6 Kerne (`cpu_threads=6`)
+- **Transkription mit [faster-whisper](https://github.com/SYSTRAN/faster-whisper)** – CTranslate2-Backend, 3–5× schneller als openai-whisper. Läuft lokal auf dem Server, kein API-Call; Modell `medium` als Standard. CPU-optimiert: Greedy Decoding (`beam_size=1`), alle Kerne genutzt. Segmente einer Aufnahme werden parallel transkribiert (max. CPU-Kernanzahl gleichzeitig) und danach zusammengeführt
 - **Sprechererkennung** – Der Bot erfasst per TS3 ClientQuery Events (`notifytalkstatuschange`), wer wann spricht.
   Whisper-Segmente werden automatisch mit Sprechernamen annotiert: `[00:45 - 01:30] Max Mustermann: Text`.
   Die ClientQuery-Verbindung bleibt durch einen Keepalive (alle 60s) dauerhaft aktiv – auch bei langen Sitzungen ohne Aktivität.
