@@ -8,7 +8,10 @@ Unterstützt Einzel- und Mehrdatei-Transkription (segmentierte Aufnahmen).
 
 import sys
 import os
+import threading
 from datetime import datetime
+
+_model_load_lock = threading.Lock()
 
 
 # ── Hilfsfunktionen ───────────────────────────────────────────
@@ -48,11 +51,13 @@ def _whisper_segmente(audio_pfad: str, model_name: str, device: str) -> tuple[li
     compute_type = "float16" if device == "cuda" else "int8"
     cache_key = (model_name, device)
     if cache_key not in _whisper_model_cache:
-        print(f"Lade Whisper-Modell ({model_name})...")
-        _whisper_model_cache[cache_key] = WhisperModel(
-            model_name, device=device, compute_type=compute_type,
-            cpu_threads=6, local_files_only=True
-        )
+        with _model_load_lock:
+            if cache_key not in _whisper_model_cache:
+                print(f"Lade Whisper-Modell ({model_name})...")
+                _whisper_model_cache[cache_key] = WhisperModel(
+                    model_name, device=device, compute_type=compute_type,
+                    cpu_threads=6, local_files_only=True
+                )
     model = _whisper_model_cache[cache_key]
 
     print(f"Transkribiere: {os.path.basename(audio_pfad)}...")
@@ -126,17 +131,19 @@ def transkribiere_mehrere(audio_pfade: list[str], ausgabe_ordner: str,
                            model_name: str = None,
                            progress_callback=None) -> str:
     """
-    Transkribiert mehrere Audiodateien (Segmente einer Aufnahme) und
+    Transkribiert mehrere Audiodateien (Segmente einer Aufnahme) parallel und
     fügt sie zu einem einzigen Transkript zusammen.
 
     Timestamps werden durch Offset (kumulierte Dauer) korrekt verschoben.
     Eine 1,5 s Überlappung zwischen Segmenten wird durch Duplikat-Filter entfernt.
 
-    progress_callback(current, total, elapsed_sec) wird nach jedem Segment aufgerufen.
+    progress_callback(current, total, elapsed_sec, eta_sec) wird nach jedem fertigen Segment aufgerufen.
 
     Gibt den Pfad zur erzeugten TXT-Datei zurück.
     """
     import time
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     if not audio_pfade:
         raise ValueError("Keine Audiodateien angegeben.")
 
@@ -145,39 +152,44 @@ def transkribiere_mehrere(audio_pfade: list[str], ausgabe_ordner: str,
 
     device, model_name = _get_device_and_model(model_name)
 
-    alle_segs: list[dict] = []
-    offset = 0.0
-    OVERLAP_TOLERANZ = 2.0  # Sekunden – Überlappungsbereich überspringen
     sorted_pfade = sorted(audio_pfade)
     total = len(sorted_pfade)
     start_time = time.time()
+    completed = 0
+    results = [None] * total  # (segs, dauer) in Reihenfolge
 
-    for idx, pfad in enumerate(sorted_pfade):
+    def _transkribiere_segment(idx: int, pfad: str):
         print(f"\n[{idx+1}/{total}] {os.path.basename(pfad)}")
-        segs, dauer = _whisper_segmente(pfad, model_name, device)
+        return idx, _whisper_segmente(pfad, model_name, device)
 
+    with ThreadPoolExecutor(max_workers=total) as executor:
+        futures = {executor.submit(_transkribiere_segment, idx, pfad): idx
+                   for idx, pfad in enumerate(sorted_pfade)}
+        for future in as_completed(futures):
+            idx, (segs, dauer) = future.result()
+            results[idx] = (segs, dauer)
+            completed += 1
+            if progress_callback:
+                elapsed = time.time() - start_time
+                avg = elapsed / completed
+                eta = avg * (total - completed)
+                progress_callback(completed, total, elapsed, eta)
+
+    # Offsets anwenden und zusammenführen (in sortierter Reihenfolge)
+    alle_segs: list[dict] = []
+    offset = 0.0
+
+    for segs, dauer in results:
         for seg in segs:
             abs_start = seg["start"] + offset
-            # Überlappungsbereich am Segment-Anfang filtern:
-            # Segmente deren Start innerhalb der letzten OVERLAP_TOLERANZ Sekunden
-            # des vorherigen Segments liegen, wurden bereits erfasst.
-            if alle_segs and abs_start < offset + OVERLAP_TOLERANZ - dauer + dauer:
-                # Vereinfacht: erste Segmente eines Folgesegments überspringen,
-                # solange abs_start < offset (also vor dem Offset-Zeitpunkt liegt)
-                if abs_start < offset:
-                    continue
+            if alle_segs and abs_start < offset:
+                continue
             alle_segs.append({
                 "start": abs_start,
                 "end":   seg["end"] + offset,
                 "text":  seg["text"],
             })
-
         offset += dauer
-        if progress_callback:
-            elapsed = time.time() - start_time
-            avg = elapsed / (idx + 1)
-            eta = avg * (total - idx - 1)
-            progress_callback(idx + 1, total, elapsed, eta)
 
     volltext = " ".join(s["text"] for s in alle_segs)
 

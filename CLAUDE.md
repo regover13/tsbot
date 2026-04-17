@@ -93,7 +93,8 @@ nginx/                   # nginx-Reverse-Proxy-Konfiguration
 - **faster-whisper** (CTranslate2), Modell per `WHISPER_MODEL` konfigurierbar (default: `medium`)
 - Auto-Erkennung GPU (float16) vs. CPU (int8) via `ctranslate2.get_cuda_device_count()`
 - Modell wird gecacht (`_whisper_model_cache`) – nur einmal pro Prozess geladen
-- CPU-Optimierungen: `beam_size=1` (Greedy Decoding, ~2–3× schneller), `cpu_threads=6` (alle Kerne), `word_timestamps=False` (nicht benötigt)
+- CPU-Optimierungen: `beam_size=1` (Greedy Decoding), `cpu_threads=6`, `word_timestamps=False` (nicht benötigt)
+- **Parallele Segmentverarbeitung**: Alle Audio-Segmente werden gleichzeitig transkribiert (`ThreadPoolExecutor`), danach Offsets berechnet und zusammengeführt → ~N× schneller bei N Segmenten
 - Sprache: Deutsch (`language="de"`), VAD-Filter aktiv, kein Kontext über Segmentgrenzen
 - Mehrere Audio-Dateien: Timestamps werden mit Offset zusammengeführt, 2 s Overlap-Toleranz
 - Transkript-Format: `[MM:SS - MM:SS] Text` + `VOLLTEXT:` am Ende
