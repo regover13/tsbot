@@ -76,6 +76,29 @@ def _mm_ss_zu_uhrzeit(zeitraum: str, basis: datetime) -> str:
     return f"{to_uhr(m.group(1), m.group(2))} - {to_uhr(m.group(3), m.group(4))} Uhr"
 
 
+def _schneide_transkript(zeilen: list[str], start_mm_ss: str,
+                         ende_mm_ss: str | None) -> str:
+    """Extrahiert Transkript-Zeilen anhand von MM:SS-Grenzen (+ 2 min Overlap am Anfang)."""
+    def zu_sekunden(mm_ss: str) -> int:
+        teile = mm_ss.split(":")
+        return int(teile[0]) * 60 + int(teile[1])
+
+    start_s = max(0, zu_sekunden(start_mm_ss) - 120)
+    ende_s  = zu_sekunden(ende_mm_ss) + 30 if ende_mm_ss else float("inf")
+
+    muster = re.compile(r'\[(\d+):(\d{2})')
+    ergebnis = []
+    for zeile in zeilen:
+        m = muster.search(zeile)
+        if m:
+            sek = int(m.group(1)) * 60 + int(m.group(2))
+            if start_s <= sek < ende_s:
+                ergebnis.append(zeile)
+        elif ergebnis:
+            ergebnis.append(zeile)
+    return "\n".join(ergebnis)
+
+
 def finde_alle_pngs(ordner: str) -> list:
     """Alle PNG-Dateien im Ordner, sortiert nach Änderungszeit."""
     pngs = [
@@ -276,6 +299,38 @@ Hinweise:
 - WICHTIG: Antworte mit reinem JSON ohne Markdown-Code-Blöcke (kein ```json)
 - WICHTIG: Keine wörtlichen Zitate mit Anführungszeichen in den Strings – paraphrasieren statt zitieren"""
 
+    # ── Zweistufiger Modus für lange Transkripte ─────────────────
+    if len(transkript_text) > 80_000 and len(agenda) > 1:
+        print(f"Transkript lang ({len(transkript_text):,} Zeichen) → zweistufige Verarbeitung.")
+        uebergaenge = ki_segment_timestamps(transkript_text, agenda, api_key, modell)
+        if uebergaenge and len(uebergaenge) >= len(agenda) - 1:
+            zeilen = transkript_text.splitlines()
+            alle_punkte = []
+            for i, punkt in enumerate(agenda):
+                start = uebergaenge[i]["start"] if i < len(uebergaenge) else "00:00"
+                ende  = uebergaenge[i + 1]["start"] if i + 1 < len(uebergaenge) else None
+                ausschnitt = _schneide_transkript(zeilen, start, ende)
+                print(f"  Punkt {i+1} ({punkt}): {start} – {ende or 'Ende'}, "
+                      f"{len(ausschnitt):,} Zeichen")
+                teil = ki_zuordnung(
+                    ausschnitt, [], [punkt], api_key, modell,
+                    extra_instruktionen=extra_instruktionen,
+                    kanal_wechsel=kanal_wechsel,
+                    teilnehmer=teilnehmer,
+                    session_started_at=session_started_at,
+                )
+                if teil:
+                    alle_punkte.extend(teil)
+                else:
+                    alle_punkte.append({
+                        "punkt": punkt,
+                        "zusammenfassung": "Kein Inhalt ermittelt.",
+                        "details": [], "beschluesse": [], "zeitraum": start,
+                    })
+            return alle_punkte
+        print("  Segmentierung unvollständig – Fallback auf Einzel-Pass.")
+    # ── Ende zweistufiger Modus ───────────────────────────────────
+
     client = anthropic.Anthropic(api_key=api_key)
     message = client.messages.create(
         model=modell,
@@ -304,6 +359,74 @@ Hinweise:
     else:
         print(f"Kein JSON in Antwort gefunden. Antwort: {antwort[:500]}")
     return []
+
+
+# ── Segmentierungs-Hilfsfunktionen (für zweistufigen Modus) ──────
+def _keyword_timestamps(zeilen: list[str], agenda: list) -> list[dict]:
+    """Sucht Agenda-Namen per Regex direkt im Transkript (kein API-Call)."""
+    muster_ts = re.compile(r'\[(\d+):(\d{2})')
+    ergebnis = []
+    for i, punkt in enumerate(agenda):
+        worte = [w for w in punkt.split() if len(w) > 4]
+        suchbegriff = worte[0] if worte else punkt[:8]
+        regex = re.compile(re.escape(suchbegriff), re.IGNORECASE)
+        for zeile in zeilen:
+            if regex.search(zeile):
+                m = muster_ts.search(zeile)
+                if m:
+                    ergebnis.append({
+                        "nummer": i + 1,
+                        "start": f"{m.group(1)}:{m.group(2)}"
+                    })
+                    break
+    return ergebnis
+
+
+def ki_segment_timestamps(transkript_text: str, agenda: list,
+                          api_key: str, modell: str) -> list[dict]:
+    """
+    Pass 1 des zweistufigen Modus: Ermittelt Startzeit jedes Agendapunkts.
+    Zuerst Keyword-Matching, dann Claude-Fallback.
+    """
+    try:
+        import anthropic
+    except ImportError:
+        return []
+
+    zeilen = transkript_text.splitlines()
+
+    kw_result = _keyword_timestamps(zeilen, agenda)
+    if len(kw_result) >= len(agenda) - 1:
+        print(f"  Segmentierung via Keyword-Matching ({len(kw_result)}/{len(agenda)} Punkte).")
+        return kw_result
+
+    agenda_text = "\n".join(f"{i+1}. {p}" for i, p in enumerate(agenda))
+    prompt = (
+        "Im folgenden Transkript stehen Zeitstempel im Format [MM:SS - MM:SS].\n"
+        "Identifiziere für jeden Agendapunkt den Zeitstempel, ab dem er beginnt.\n"
+        "Der Moderator kündigt jeden Punkt explizit an.\n\n"
+        f"AGENDA:\n{agenda_text}\n\n"
+        f"TRANSKRIPT:\n{transkript_text}\n\n"
+        "Antworte NUR mit JSON:\n"
+        '{"uebergaenge": [{"nummer": 1, "start": "07:19"}, ...]}\n'
+        "Für Punkte ohne klare Ankündigung: Schätze anhand der Reihenfolge."
+    )
+    client = anthropic.Anthropic(api_key=api_key)
+    msg = client.messages.create(
+        model=modell, max_tokens=512, temperature=0,
+        messages=[{"role": "user", "content": prompt}]
+    )
+    antwort = msg.content[0].text.strip()
+    antwort = re.sub(r'^```(?:json)?\s*', '', antwort)
+    antwort = re.sub(r'\s*```$', '', antwort).strip()
+    try:
+        data = json.loads(antwort)
+        uebergaenge = data.get("uebergaenge", [])
+        print(f"  Segmentierung via Claude ({len(uebergaenge)}/{len(agenda)} Punkte).")
+        return uebergaenge
+    except json.JSONDecodeError:
+        print("  Segmentierung fehlgeschlagen – Fallback auf Einzel-Pass.")
+        return []
 
 
 # ── Word-Dokument erstellen ───────────────────────────────────
