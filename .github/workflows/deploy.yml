@@ -56,14 +56,8 @@ jobs:
             -d "{\"username\":\"$PORTAINER_USER\",\"password\":\"$PORTAINER_PASS\"}" \
             | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
 
-          # Stack-YAML einlesen, :latest durch :<sha> ersetzen und als JSON escapen
-          # Dadurch sieht Docker bei jedem Deploy eine neue Image-Referenz → Container wird recreated
-          COMPOSE=$(python3 -c "
-import json, os
-sha = os.environ.get('GIT_SHA', 'latest')
-compose = open('docker-compose.yml').read().replace(':latest', ':' + sha)
-print(json.dumps(compose))
-")
+          # Stack-YAML einlesen, :latest durch :<sha> ersetzen → Container wird recreated
+          COMPOSE=$(python3 -c "import json,os; sha=os.environ.get('GIT_SHA','latest'); c=open('docker-compose.yml').read().replace(':latest',':'+sha); print(json.dumps(c))")
 
           # Stack updaten + neues Image pullen
           HTTP_CODE=$(curl -s -o /tmp/portainer_response.txt -w "%{http_code}" \
