@@ -342,9 +342,10 @@ class TSClientControl:
             except Exception:
                 pass
 
+            nickname_escaped = self._nickname.replace("\\", "\\\\").replace(" ", "\\s").replace("|", "\\p").replace("/", "\\/")
             cmd = (
                 f"connect address={self._server_addr} port={self._server_port} "
-                f"nickname={self._nickname}"
+                f"nickname={nickname_escaped}"
             )
             if self._server_pass:
                 cmd += f" password={self._server_pass}"
