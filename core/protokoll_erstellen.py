@@ -57,7 +57,7 @@ def lese_agenda(pfad: str) -> list:
 def lese_transkript(pfad: str) -> tuple:
     with open(pfad, "r", encoding="utf-8") as f:
         inhalt = f.read()
-    muster = re.compile(r'\[(\d{2}:\d{2}) - (\d{2}:\d{2})\] (.+)')
+    muster = re.compile(r'\[(\d+:\d{2}) - (\d+:\d{2})\] (.+)')
     segmente = muster.findall(inhalt)
     volltext_match = re.search(r'VOLLTEXT:\s*\n\n(.+)', inhalt, re.DOTALL)
     volltext = volltext_match.group(1).strip() if volltext_match else inhalt
@@ -361,55 +361,37 @@ Hinweise:
     return []
 
 
-# ── Segmentierungs-Hilfsfunktionen (für zweistufigen Modus) ──────
-def _keyword_timestamps(zeilen: list[str], agenda: list) -> list[dict]:
-    """Sucht Agenda-Namen per Regex direkt im Transkript (kein API-Call)."""
-    muster_ts = re.compile(r'\[(\d+):(\d{2})')
-    ergebnis = []
-    for i, punkt in enumerate(agenda):
-        worte = [w for w in punkt.split() if len(w) > 4]
-        suchbegriff = worte[0] if worte else punkt[:8]
-        regex = re.compile(re.escape(suchbegriff), re.IGNORECASE)
-        for zeile in zeilen:
-            if regex.search(zeile):
-                m = muster_ts.search(zeile)
-                if m:
-                    ergebnis.append({
-                        "nummer": i + 1,
-                        "start": f"{m.group(1)}:{m.group(2)}"
-                    })
-                    break
-    return ergebnis
-
-
+# ── Segmentierungs-Hilfsfunktion (für zweistufigen Modus) ────────
 def ki_segment_timestamps(transkript_text: str, agenda: list,
                           api_key: str, modell: str) -> list[dict]:
     """
-    Pass 1 des zweistufigen Modus: Ermittelt Startzeit jedes Agendapunkts.
-    Zuerst Keyword-Matching, dann Claude-Fallback.
+    Pass 1 des zweistufigen Modus: Ermittelt via Claude den Startzeit-Stempel
+    jedes Agendapunkts. Claude erkennt aus dem Kontext formale Ankündigungen
+    und unterscheidet sie von Forward-References ("das klären wir später").
     """
     try:
         import anthropic
     except ImportError:
         return []
 
-    zeilen = transkript_text.splitlines()
-
-    kw_result = _keyword_timestamps(zeilen, agenda)
-    if len(kw_result) >= len(agenda) - 1:
-        print(f"  Segmentierung via Keyword-Matching ({len(kw_result)}/{len(agenda)} Punkte).")
-        return kw_result
-
     agenda_text = "\n".join(f"{i+1}. {p}" for i, p in enumerate(agenda))
     prompt = (
         "Im folgenden Transkript stehen Zeitstempel im Format [MM:SS - MM:SS].\n"
-        "Identifiziere für jeden Agendapunkt den Zeitstempel, ab dem er beginnt.\n"
-        "Der Moderator kündigt jeden Punkt explizit an.\n\n"
+        "Identifiziere für jeden Agendapunkt den Zeitstempel, ab dem er FORMAL beginnt.\n\n"
+        "WICHTIG:\n"
+        "- Nur die formale Ankündigung durch den Moderator zählt\n"
+        "  (z.B. 'jetzt kommen wir zu...', 'als nächstes...', 'wir wären beim Punkt...')\n"
+        "- Eine Nennung eines späteren Punkts WÄHREND eines laufenden Punkts\n"
+        "  ('das besprechen wir unter Anliegen der Mitglieder') zählt NICHT als Start\n"
+        "- 'Anliegen der Mitglieder' ist ein offener Sammelkorb für Spontanthemen;\n"
+        "  er beginnt erst wenn der Moderator ihn offiziell eröffnet\n"
+        "- 'Internes (nicht öffentlich)' ähnlich: beginnt erst bei formaler Eröffnung,\n"
+        "  typischerweise mit einem Hinweis auf kleinere/nichtöffentliche Runde\n"
+        "- Schätze fehlende Punkte anhand der Reihenfolge und des Zeitverlaufs\n\n"
         f"AGENDA:\n{agenda_text}\n\n"
         f"TRANSKRIPT:\n{transkript_text}\n\n"
-        "Antworte NUR mit JSON:\n"
-        '{"uebergaenge": [{"nummer": 1, "start": "07:19"}, ...]}\n'
-        "Für Punkte ohne klare Ankündigung: Schätze anhand der Reihenfolge."
+        "Antworte NUR mit JSON (kein Markdown):\n"
+        '{"uebergaenge": [{"nummer": 1, "start": "07:19"}, ...]}'
     )
     client = anthropic.Anthropic(api_key=api_key)
     msg = client.messages.create(
