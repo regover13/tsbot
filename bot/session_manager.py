@@ -46,8 +46,9 @@ class SessionManager:
         self.state:      State    = State.IDLE
         self.session_id: str | None = None
         self.session_dir: Path | None = None
-        self.thema:               str  = ""
-        self.extra_instruktionen: str  = ""
+        self.thema:               str        = ""
+        self.extra_instruktionen: str        = ""
+        self.agenda:              list[str]  = []
         self.started_at: datetime | None = None
         self.error_msg:  str | None = None
         self.freeze_warning: bool = False
@@ -90,6 +91,7 @@ class SessionManager:
         self.session_dir.mkdir(parents=True, exist_ok=True)
         self.thema               = thema
         self.extra_instruktionen = extra_instruktionen or ""
+        self.agenda              = agenda or []
         self.started_at  = datetime.now()
         self.error_msg   = None
         self._loop       = asyncio.get_running_loop()
@@ -181,6 +183,7 @@ class SessionManager:
             meta["thema"] = thema
 
         if agenda is not None:
+            self.agenda = agenda
             inhalt = "\n".join(agenda)
             agenda_file = self.session_dir / "agenda.txt"
             agenda_file.write_text(inhalt, encoding="utf-8")
@@ -334,6 +337,7 @@ class SessionManager:
             "state":                self.state,
             "session_id":           self.session_id,
             "thema":                self.thema,
+            "agenda":               self.agenda,
             "extra_instruktionen":  self.extra_instruktionen,
             "started_at":           self.started_at.isoformat() if self.started_at else None,
             "duration_seconds":     duration_sec,
@@ -612,6 +616,7 @@ class SessionManager:
         self.session_dir         = None
         self.thema               = ""
         self.extra_instruktionen = ""
+        self.agenda              = []
         self.started_at          = None
         self.error_msg           = None
         self.freeze_warning      = False

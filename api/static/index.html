@@ -860,6 +860,9 @@ function applyStatus(s) {
   // Felder beim ersten RECORDING-Übergang aus Status befüllen (z.B. nach Page-Refresh)
   if (isRec && prevState !== 'RECORDING') {
     document.getElementById('f-thema').value = s.thema || '';
+    if (s.agenda && s.agenda.length) {
+      document.getElementById('f-agenda-override').value = s.agenda.join('\n');
+    }
     if (s.extra_instruktionen) {
       document.getElementById('f-extra').value = s.extra_instruktionen;
     }
