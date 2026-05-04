@@ -34,7 +34,9 @@ jobs:
         with:
           context: .
           push: true
-          tags: ${{ env.IMAGE }}:latest
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -46,6 +48,7 @@ jobs:
           PORTAINER_PASS: ${{ secrets.PORTAINER_PASS }}
           PORTAINER_STACK_ID: ${{ secrets.PORTAINER_STACK_ID }}
           PORTAINER_ENDPOINT_ID: ${{ secrets.PORTAINER_ENDPOINT_ID }}
+          GIT_SHA: ${{ github.sha }}
         run: |
           # Login → JWT holen
           JWT=$(curl -s -X POST "$PORTAINER_URL/api/auth" \
@@ -53,8 +56,14 @@ jobs:
             -d "{\"username\":\"$PORTAINER_USER\",\"password\":\"$PORTAINER_PASS\"}" \
             | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
 
-          # Stack-YAML einlesen und als JSON escapen
-          COMPOSE=$(python3 -c "import json; print(json.dumps(open('docker-compose.yml').read()))")
+          # Stack-YAML einlesen, :latest durch :<sha> ersetzen und als JSON escapen
+          # Dadurch sieht Docker bei jedem Deploy eine neue Image-Referenz → Container wird recreated
+          COMPOSE=$(python3 -c "
+import json, os
+sha = os.environ.get('GIT_SHA', 'latest')
+compose = open('docker-compose.yml').read().replace(':latest', ':' + sha)
+print(json.dumps(compose))
+")
 
           # Stack updaten + neues Image pullen
           HTTP_CODE=$(curl -s -o /tmp/portainer_response.txt -w "%{http_code}" \

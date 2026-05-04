@@ -297,7 +297,8 @@ Hinweise:
 - details: Aufzählungsliste für Events, Programmpunkte, Termine, Stichpunkte – leer lassen wenn kein Listeninhalt vorhanden
 - Beschlüsse = konkrete Entscheidungen oder Aktionspunkte
 - WICHTIG: Antworte mit reinem JSON ohne Markdown-Code-Blöcke (kein ```json)
-- WICHTIG: Keine wörtlichen Zitate mit Anführungszeichen in den Strings – paraphrasieren statt zitieren"""
+- WICHTIG: Keine wörtlichen Zitate mit Anführungszeichen in den Strings – paraphrasieren statt zitieren
+- NAMEN: Wenn ein Sprecher im Transkript von anderen namentlich angesprochen wird oder sich selbst vorstellt, gleiche den Namen mit der Teilnehmerliste ab und verwende immer den vollständigen Namen. Schreibe nur dann 'ein Mitglied', wenn der Sprecher absolut nicht identifizierbar ist."""
 
     # ── Zweistufiger Modus für lange Transkripte ─────────────────
     if len(transkript_text) > 80_000 and len(agenda) > 1:

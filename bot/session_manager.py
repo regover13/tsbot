@@ -570,7 +570,7 @@ class SessionManager:
                     overlaps[name] = overlaps.get(name, 0) + overlap
             return max(overlaps, key=overlaps.get) if overlaps else ""
 
-        seg_re = re.compile(r'\[(\d{2}):(\d{2}) - (\d{2}):(\d{2})\] (.+)')
+        seg_re = re.compile(r'\[(\d+):(\d{2}) - (\d+):(\d{2})\] (.+)')
         lines = transcript_path.read_text(encoding="utf-8").splitlines()
         new_lines = []
         for line in lines:

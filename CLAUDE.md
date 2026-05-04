@@ -51,6 +51,7 @@ nginx/                   # nginx-Reverse-Proxy-Konfiguration
 - Deployment über **Docker/Portainer** (kein systemd im Container)
 - Image: `ghcr.io/regover13/tsbot:latest` (gebaut via GitHub Actions bei Push auf `master`)
 - Compose-Stack auf Server: `/var/lib/docker/volumes/portainer_data/_data/compose/5/docker-compose.yml`
+- **API bindet auf `127.0.0.1:8080`** (nicht `0.0.0.0`) — via `command:` Override im Compose-Stack. Nur nginx kann von außen drauf zugreifen.
 - Secrets als Umgebungsvariablen im Compose-Stack hinterlegt
 - **GHCR Registry** muss in Portainer hinterlegt sein (Registries → GitHub → ghcr.io / regover13 / PAT mit `read:packages`), sonst schlägt Deploy still fehl
 - **CI/CD:** GitHub Actions baut Image → pushed zu GHCR → ruft Portainer API direkt auf (PUT /api/stacks/5) mit `pullImage:true`. Kein Webhook (Portainer-Webhooks setzen Docker Swarm voraus). Secrets: `PORTAINER_URL`, `PORTAINER_USER`, `PORTAINER_PASS`, `PORTAINER_STACK_ID`, `PORTAINER_ENDPOINT_ID`
@@ -110,6 +111,8 @@ nginx/                   # nginx-Reverse-Proxy-Konfiguration
 - Max Tokens: 8192, Temperature: 0.3
 - Prompt enthält: Datum, Teilnehmer-Block, Agenda, annotiertes Transkript, Kanalwechsel-Events, Extra-Instruktionen
 - Claude gibt strukturiertes JSON zurück: `agenda_punkte[]` mit `zusammenfassung`, `details[]`, `beschluesse[]`, `zeitraum`
+- **Zwei-Pass** bei Transkripten >80.000 Zeichen: Pass 1 (`ki_segment_timestamps()`) lässt Claude die Zeitstempel der Agenda-Punkte bestimmen; Pass 2 verarbeitet jeden Punkt mit fokussiertem Transkript-Ausschnitt via `_schneide_transkript(transkript, start_ts, end_ts, puffer_min=2)` — spart Tokens, ermöglicht lange Meetings ohne Kürzung
+- Timestamp-Regex in `lese_transkript()` und beiden Sprecher-Annotation-Funktionen: `\d+` (nicht `\d{2}`) — Meetings >99 Minuten werden vollständig verarbeitet
 - Word-Dokument: Inhaltsverzeichnis (Word TOC-Feld), Metadaten-Tabelle, Teilnehmertabelle, Kanalwechsel-Hinweis, Agenda-Struktur, Protokoll-Abschnitte
 - Kanalwechsel im Protokoll: Bullet-Liste vor dem TOC + Zeitangabe (`14:32 Uhr: Kanal A → Kanal B`)
 - Windows-Modus: Teilnehmer per Claude Vision aus TS3-Screenshots (`.png` im Skript-Ordner)

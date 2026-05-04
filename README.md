@@ -338,8 +338,9 @@ Bei jedem Push auf `master` wird automatisch ein neues Image gebaut und deployed
 
 ```
 git push master
-  → GitHub Actions: Docker build + push → ghcr.io/regover13/tsbot:latest
-  → Portainer Webhook: Pull neues Image + Container neu starten
+  → GitHub Actions: Docker build + push → ghcr.io/regover13/tsbot:latest + :<sha>
+  → Portainer API (PUT /api/stacks): Pull neues Image + Container neu erstellen
+    (SHA-basiertes Image-Tag erzwingt Container-Recreate)
 ```
 
 **Was wird dockerisiert:** Nur die Python-App (FastAPI + Whisper + Claude).
@@ -399,15 +400,21 @@ Stacks → Add stack → Repository:
 
 → **Deploy the stack** → Webhook-URL aus Portainer kopieren
 
-**4. Webhook-URL als GitHub Secret speichern**
+**4. GitHub Action Secrets speichern**
 
-GitHub → Repository → Settings → Secrets → Actions → New secret:
-- Name: `PORTAINER_WEBHOOK_URL`
-- Value: (URL aus Portainer)
+GitHub → Repository → Settings → Secrets → Actions → folgende Secrets anlegen:
+
+| Secret | Wert |
+|--------|------|
+| `PORTAINER_URL` | `https://deine-portainer-domain:9443` |
+| `PORTAINER_USER` | Portainer-Benutzername |
+| `PORTAINER_PASS` | Portainer-Passwort |
+| `PORTAINER_STACK_ID` | Stack-ID (sichtbar in der URL beim Stack-Öffnen) |
+| `PORTAINER_ENDPOINT_ID` | Endpoint-ID (sichtbar in der URL beim Environment-Öffnen) |
 
 Nach dem Setup wird bei jedem Push auf `master` automatisch:
-1. Das Docker-Image gebaut und auf GHCR gepusht
-2. Portainer benachrichtigt → Container wird mit dem neuen Image neu gestartet
+1. Das Docker-Image mit `:latest` **und** `:<git-sha>` auf GHCR gepusht
+2. Portainer ruft `docker compose up` mit dem SHA-Tag auf → Container wird neu erstellt
 
 ### Lokaler Docker-Test
 
@@ -828,15 +835,20 @@ systemctl restart tsbot-pulseaudio
 # - requirements.txt enthält fehlerhafte Paketnamen
 ```
 
-### Docker: Portainer zieht kein neues Image
+### Docker: Portainer zieht kein neues Image / Container nicht aktuell
+
+Der CI/CD-Workflow baut das Image mit einem SHA-basierten Tag (`:<sha>`) und sendet diesen
+Tag an Portainer. Dadurch erkennt Docker immer eine Konfigurationsänderung und recreated den
+Container. Manuell:
 
 ```bash
-# Webhook manuell testen (URL aus Portainer kopieren):
-curl -X POST "https://portainer.example.com/api/webhooks/..."
+# Prüfen ob der Container mit dem neuen Image läuft:
+docker inspect tsbot-tsbot-api-1 | grep -A2 '"Image"'
 
-# Im Portainer Stack: "Pull and redeploy" manuell auslösen
-# Dann prüfen ob das Image-Tag "latest" wirklich aktuell ist:
-docker inspect ghcr.io/regover13/tsbot:latest | grep Created
+# Im Portainer Stack manuell: "Pull and redeploy" auslösen
+# Oder direkt auf dem Server:
+docker pull ghcr.io/regover13/tsbot:latest
+docker compose -f /var/lib/docker/volumes/portainer_data/_data/compose/5/docker-compose.yml up -d --force-recreate
 ```
 
 ---
