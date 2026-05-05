@@ -19,6 +19,163 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 
 
+# ── Deutsche ICAO-Codes (Quelle: Wikipedia, vollständig) ──────
+ICAO_DE = {
+    "EDAB": "Bautzen", "EDAC": "Altenburg", "EDAD": "Dessau", "EDAE": "Eisenhüttenstadt",
+    "EDAG": "Großrückerswalde", "EDAH": "Heringsdorf", "EDAI": "Segeletz", "EDAJ": "Gera",
+    "EDAK": "Großenhain", "EDAL": "Fürstenwalde", "EDAM": "Merseburg", "EDAN": "Neustadt-Glewe",
+    "EDAO": "Nordhausen", "EDAP": "Neuhausen", "EDAQ": "Halle", "EDAR": "Pirna",
+    "EDAS": "Finsterwalde", "EDAT": "Nardt", "EDAU": "Riesa", "EDAV": "Eberswalde",
+    "EDAW": "Roitzschjora", "EDAX": "Müritz", "EDAY": "Strausberg", "EDAZ": "Schönhagen",
+    "EDBA": "Arnstadt", "EDBC": "Magdeburg", "EDBD": "Dedelow", "EDBE": "Brandenburg",
+    "EDBF": "Fehrbellin", "EDBG": "Burg", "EDBH": "Barth", "EDBI": "Zwickau",
+    "EDBJ": "Jena", "EDBK": "Kyritz", "EDBL": "Laucha", "EDBM": "Magdeburg",
+    "EDBN": "Neubrandenburg", "EDBO": "Oehna", "EDBP": "Pinnow", "EDBQ": "Bronkow",
+    "EDBR": "Rothenburg", "EDBS": "Sömmerda", "EDBT": "Allstedt", "EDBU": "Pritzwalk",
+    "EDBV": "Stralsund", "EDBW": "Werneuchen", "EDBX": "Görlitz", "EDBY": "Schmoldow",
+    "EDBZ": "Schwarzheide", "EDCA": "Anklam", "EDCB": "Ballenstedt", "EDCD": "Cottbus",
+    "EDCE": "Eggersdorf", "EDCF": "Friedersdorf", "EDCG": "Rügen", "EDCH": "Sprossen",
+    "EDCI": "Klix", "EDCJ": "Chemnitz", "EDCK": "Köthen", "EDCL": "Klietz",
+    "EDCM": "Kamenz", "EDCO": "Obermehler", "EDCP": "Peenemünde", "EDCQ": "Aschersleben",
+    "EDCR": "Rerik", "EDCS": "Saarmund", "EDCT": "Taucha", "EDCU": "Güstrow",
+    "EDCV": "Pasewalk", "EDCW": "Wismar", "EDCX": "Purkshof", "EDCY": "Welzow",
+    "EDDB": "Berlin (BER)", "EDDC": "Dresden", "EDDE": "Erfurt", "EDDF": "Frankfurt",
+    "EDDG": "Münster/Osnabrück", "EDDH": "Hamburg", "EDDI": "Berlin (Tempelhof)",
+    "EDDK": "Köln/Bonn", "EDDL": "Düsseldorf", "EDDM": "München", "EDDN": "Nürnberg",
+    "EDDP": "Leipzig/Halle", "EDDR": "Saarbrücken", "EDDS": "Stuttgart",
+    "EDDT": "Berlin (Tegel)", "EDDV": "Hannover", "EDDW": "Bremen",
+    "EDEB": "Bad Langensalza", "EDEF": "Babenhausen", "EDEG": "Gotha", "EDEH": "Herrenteich",
+    "EDEK": "Baumholder", "EDEL": "Langenlonsheim", "EDEM": "Mosenberg", "EDEN": "Bad Hersfeld",
+    "EDEP": "Heppenheim", "EDEQ": "Mühlhausen", "EDER": "Wasserkuppe", "EDEW": "Walldürn",
+    "EDFA": "Anspach", "EDFB": "Reichelsheim", "EDFC": "Aschaffenburg", "EDFD": "Bad Neustadt",
+    "EDFE": "Egelsbach", "EDFG": "Gelnhausen", "EDFH": "Hahn", "EDFI": "Hirzenhain",
+    "EDFJ": "Hammelburg", "EDFK": "Bad Kissingen", "EDFL": "Gießen", "EDFM": "Mannheim",
+    "EDFN": "Marburg", "EDFO": "Michelstadt", "EDFP": "Ober-Mörlen", "EDFQ": "Allendorf",
+    "EDFR": "Rothenburg ob der Tauber", "EDFS": "Schweinfurt", "EDFT": "Lauterbach",
+    "EDFU": "Mainbullau", "EDFV": "Worms", "EDFW": "Würzburg", "EDFX": "Hockenheim",
+    "EDFY": "Elz", "EDFZ": "Mainz", "EDGA": "Ailertchen", "EDGB": "Breitscheid",
+    "EDGE": "Eisenach", "EDGF": "Fulda", "EDGH": "Hettstadt", "EDGI": "Ingelfingen",
+    "EDGJ": "Ochsenfurt", "EDGK": "Korbach", "EDGM": "Mosbach", "EDGN": "Nordenbeck",
+    "EDGP": "Oppenheim", "EDGQ": "Schameder", "EDGR": "Gießen", "EDGS": "Siegerland",
+    "EDGT": "Bottenhorn", "EDGU": "Unterschüpf", "EDGW": "Wolfhagen", "EDGX": "Walldorf",
+    "EDGY": "Kitzingen", "EDGZ": "Weinheim", "EDHA": "Ahlhorn", "EDHB": "Grube",
+    "EDHC": "Lüchow", "EDHD": "Eichsfeld", "EDHE": "Uetersen", "EDHF": "Itzehoe",
+    "EDHG": "Lüneburg", "EDHI": "Hamburg-Finkenwerder", "EDHK": "Kiel", "EDHL": "Lübeck",
+    "EDHM": "Hartenholm", "EDHN": "Neumünster", "EDHO": "Ahrenlohe", "EDHP": "Pellworm",
+    "EDHS": "Stade", "EDHU": "Lauenbrück", "EDHW": "Wahlstedt", "EDHY": "Hoya",
+    "EDIU": "Heidelberg", "EDJA": "Memmingen", "EDJG": "Grabenstätt", "EDJR": "Saarlouis",
+    "EDKA": "Aachen", "EDKB": "Bonn", "EDKD": "Altena", "EDKF": "Bergneustadt",
+    "EDKH": "Hünsborn", "EDKI": "Betzdorf", "EDKL": "Leverkusen", "EDKM": "Meschede",
+    "EDKN": "Wipperfürth", "EDKO": "Brilon", "EDKP": "Plettenberg", "EDKR": "Schmallenberg",
+    "EDKU": "Attendorn", "EDKV": "Dahlemer Binz", "EDKW": "Werdohl", "EDKZ": "Meinerzhagen",
+    "EDLA": "Arnsberg", "EDLB": "Borkenberge", "EDLC": "Kamp-Lintfort", "EDLD": "Dinslaken",
+    "EDLE": "Essen", "EDLF": "Grefrath", "EDLG": "Goch", "EDLH": "Hamm",
+    "EDLI": "Bielefeld", "EDLJ": "Detmold", "EDLK": "Krefeld", "EDLM": "Marl",
+    "EDLN": "Mönchengladbach", "EDLO": "Oerlinghausen", "EDLP": "Paderborn/Lippstadt",
+    "EDLQ": "Beelen", "EDLR": "Paderborn", "EDLS": "Stadtlohn", "EDLT": "Münster",
+    "EDLU": "Oelde", "EDLV": "Wesel", "EDLW": "Dortmund", "EDLX": "Wesel",
+    "EDLY": "Borken", "EDLZ": "Soest", "EDMA": "Augsburg", "EDMB": "Biberach",
+    "EDMC": "Blaubeuren", "EDMD": "Dachau", "EDME": "Eggenfelden", "EDMF": "Fürstenzell",
+    "EDMG": "Günzburg", "EDMH": "Gunzenhausen", "EDMI": "Illertissen", "EDMJ": "Jesenwang",
+    "EDMK": "Kempten", "EDML": "Landshut", "EDMN": "Mindelheim", "EDMO": "Oberpfaffenhofen",
+    "EDMP": "Vilsbiburg", "EDMQ": "Donauwörth", "EDMS": "Straubing", "EDMT": "Tannheim",
+    "EDMU": "Gundelfingen", "EDMV": "Vilshofen", "EDMW": "Deggendorf", "EDMY": "Mühldorf",
+    "EDMZ": "Bad Waldsee", "EDNA": "Ampfing", "EDNB": "Arnbruck", "EDNC": "Beilngries",
+    "EDND": "Dinkelsbühl", "EDNE": "Erbach", "EDNF": "Grafenau", "EDNG": "Giengen",
+    "EDNH": "Bad Wörishofen", "EDNI": "Berching", "EDNJ": "Neuburg an der Donau",
+    "EDNK": "Kirchdorf an der Iller", "EDNL": "Leutkirch", "EDNM": "Nittenau",
+    "EDNO": "Nördlingen", "EDNP": "Pfarrkirchen", "EDNQ": "Bopfingen", "EDNR": "Regensburg",
+    "EDNS": "Schwabmünchen", "EDNT": "Treuchtlingen", "EDNU": "Thannhausen",
+    "EDNV": "Vogtareuth", "EDNW": "Weißenhorn", "EDNX": "Schleißheim",
+    "EDNY": "Friedrichshafen", "EDNZ": "Zell am Harmersbach",
+    "EDOA": "Auerbach", "EDOB": "Bad Berka", "EDOC": "Gardelegen", "EDOD": "Reinsdorf",
+    "EDOE": "Schwaighofen", "EDOF": "Bad Frankenhausen", "EDOG": "Torgau",
+    "EDOH": "Langhennersdorf", "EDOI": "Bienenfarm", "EDOJ": "Lüsse", "EDOK": "Rudolstadt",
+    "EDOL": "Oschersleben", "EDOM": "Klein Mühlingen", "EDON": "Neuhardenberg",
+    "EDOP": "Schwerin", "EDOQ": "Oschatz", "EDOR": "Stölln", "EDOS": "Pennewitz",
+    "EDOT": "Greiz", "EDOU": "Weimar", "EDOV": "Stendal", "EDOW": "Waren",
+    "EDOX": "Renneritz", "EDOZ": "Schönebeck",
+    "EDPA": "Aalen", "EDPB": "Bad Ditzenbach", "EDPC": "Bad Endorf", "EDPD": "Dingolfing",
+    "EDPE": "Eichstätt", "EDPF": "Schwandorf", "EDPG": "Griesau", "EDPH": "Neuhausen ob Eck",
+    "EDPI": "Moosburg", "EDPJ": "Laichingen", "EDPK": "Schönberg", "EDPM": "Donzdorf",
+    "EDPO": "Neumarkt in der Oberpfalz", "EDPQ": "Schmidgaden", "EDPS": "Sonnen",
+    "EDPT": "Gerstetten", "EDPU": "Bartholomä", "EDPW": "Thalmässing", "EDPY": "Ellwangen",
+    "EDQA": "Bamberg", "EDQB": "Bad Windsheim", "EDQC": "Coburg", "EDQD": "Bayreuth",
+    "EDQE": "Burg Feuerstein", "EDQF": "Ansbach", "EDQG": "Giebelstadt",
+    "EDQH": "Herzogenaurach", "EDQI": "Lauf an der Pegnitz", "EDQK": "Kulmbach",
+    "EDQL": "Lichtenfels", "EDQM": "Hof", "EDQN": "Neustadt an der Aisch",
+    "EDQO": "Ottengrüner Heide", "EDQP": "Rosenthal", "EDQR": "Ebern", "EDQS": "Suhl",
+    "EDQT": "Haßfurt", "EDQW": "Weiden", "EDQX": "Hetzleser Berg", "EDQY": "Coburg",
+    "EDQZ": "Pegnitz",
+    "EDRA": "Bad Neuenahr", "EDRB": "Bitburg", "EDRD": "Neumagen-Dhron", "EDRE": "Mendig",
+    "EDRF": "Bad Dürkheim", "EDRG": "Idar-Oberstein", "EDRH": "Hoppstädten-Weiersbach",
+    "EDRI": "Linkenheim", "EDRJ": "Saarlouis", "EDRK": "Koblenz", "EDRL": "Lachen-Speyerdorf",
+    "EDRM": "Traben-Trarbach", "EDRN": "Nannhausen", "EDRO": "Schweighofen",
+    "EDRP": "Pirmasens", "EDRS": "Bad Sobernheim", "EDRT": "Trier",
+    "EDRV": "Wershofen", "EDRW": "Dierdorf", "EDRX": "Neunkirchen", "EDRY": "Speyer",
+    "EDRZ": "Zweibrücken",
+    "EDSA": "Albstadt-Degerfeld", "EDSB": "Karlsruhe/Baden-Baden", "EDSD": "Deckenpfronn",
+    "EDSE": "Göppingen", "EDSF": "Hütten", "EDSG": "Grabenstetten", "EDSH": "Backnang",
+    "EDSI": "Binningen", "EDSK": "Kehl", "EDSL": "Blumberg", "EDSM": "Müllheim",
+    "EDSN": "Neuhausen ob Eck", "EDSO": "Gruibingen", "EDSP": "Pferdsfeld",
+    "EDSR": "Radolfzell", "EDST": "Kirchheim/Hahnweide", "EDSW": "Altdorf",
+    "EDSX": "Völkleshofen", "EDSZ": "Rottweil",
+    "EDTA": "Bohlhof", "EDTB": "Baden-Oos", "EDTC": "Bruchsal", "EDTD": "Donaueschingen",
+    "EDTE": "Eutingen im Gäu", "EDTF": "Freiburg im Breisgau", "EDTG": "Bremgarten",
+    "EDTH": "Heubach", "EDTK": "Karlsruhe", "EDTL": "Lahr", "EDTM": "Mengen",
+    "EDTN": "Nabern", "EDTO": "Offenburg", "EDTP": "Pfullendorf", "EDTQ": "Pattonville",
+    "EDTR": "Rheinfelden", "EDTS": "Schwenningen", "EDTU": "Saulgau", "EDTW": "Schramberg",
+    "EDTX": "Schwäbisch Hall", "EDTY": "Schwäbisch Hall", "EDTZ": "Konstanz",
+    "EDUA": "Stechow", "EDUB": "Brandenburg an der Havel", "EDUF": "Falkenberg",
+    "EDUG": "Gransee", "EDUO": "Oberrißdorf", "EDUP": "Perleberg", "EDUR": "Brüggen",
+    "EDUS": "Finsterwalde", "EDUT": "Templin", "EDUW": "Tutow", "EDUY": "Sedlitzer See",
+    "EDUZ": "Zerbst",
+    "EDVA": "Bad Gandersheim", "EDVC": "Celle", "EDVD": "Uslar", "EDVE": "Braunschweig",
+    "EDVF": "Blomberg", "EDVG": "Mengeringhausen", "EDVH": "Hodenhagen", "EDVI": "Höxter",
+    "EDVJ": "Salzgitter", "EDVK": "Kassel", "EDVL": "Hölleberg", "EDVM": "Hildesheim",
+    "EDVN": "Northeim", "EDVP": "Peine", "EDVQ": "Wilsche", "EDVR": "Rinteln",
+    "EDVS": "Salzgitter", "EDVU": "Uelzen", "EDVW": "Bad Pyrmont", "EDVY": "Porta Westfalica",
+    "EDWA": "Bordelum", "EDWB": "Bremerhaven", "EDWC": "Damme", "EDWD": "Lemwerder",
+    "EDWE": "Emden", "EDWF": "Leer", "EDWG": "Wangerooge", "EDWH": "Oldenburg",
+    "EDWI": "Wilhelmshaven", "EDWJ": "Juist", "EDWK": "Karlshöfen", "EDWL": "Langeoog",
+    "EDWM": "Weser-Wümme", "EDWN": "Nordhorn", "EDWO": "Osnabrück", "EDWP": "Wiefelstede",
+    "EDWQ": "Ganderkesee", "EDWR": "Borkum", "EDWS": "Norden", "EDWT": "Blexen",
+    "EDWU": "Varrelbusch", "EDWV": "Verden", "EDWX": "Westerstede", "EDWY": "Norderney",
+    "EDWZ": "Baltrum",
+    "EDXA": "Achmer", "EDXB": "Heide-Büsum", "EDXC": "Schleswig", "EDXD": "Bohmte",
+    "EDXE": "Rheine", "EDXF": "Flensburg", "EDXG": "Melle", "EDXH": "Helgoland",
+    "EDXI": "Nienburg", "EDXJ": "Husum", "EDXK": "Leck", "EDXL": "Barßel",
+    "EDXM": "St. Michaelisdonn", "EDXN": "Nordholz", "EDXO": "St. Peter-Ording",
+    "EDXP": "Harle", "EDXQ": "Rotenburg", "EDXR": "Rendsburg", "EDXS": "Seedorf",
+    "EDXT": "Sierksdorf", "EDXU": "Hüttenbusch", "EDXW": "Sylt", "EDXY": "Wyk auf Föhr",
+    "EDXZ": "Kührstedt",
+    "ETAD": "Spangdahlem", "ETAR": "Ramstein", "ETBS": "Berlin", "ETEB": "Ansbach",
+    "ETED": "Kaiserslautern", "ETEJ": "Bamberg", "ETEK": "Baumholder", "ETGU": "Ulm",
+    "ETHA": "Altenstadt", "ETHB": "Bückeburg", "ETHC": "Celle", "ETHE": "Rheine",
+    "ETHF": "Fritzlar", "ETHI": "Itzehoe", "ETHL": "Laupheim", "ETHM": "Mendig",
+    "ETHN": "Niederstetten", "ETHR": "Roth", "ETHS": "Faßberg", "ETIC": "Grafenwöhr",
+    "ETID": "Langendiebach", "ETIE": "Heidelberg", "ETIH": "Hohenfels", "ETIK": "Illesheim",
+    "ETIN": "Kitzingen", "ETLS": "Leipzig", "ETME": "Eggebek", "ETMK": "Kiel",
+    "ETMN": "Nordholz", "ETND": "Diepholz", "ETNG": "Geilenkirchen", "ETNH": "Hohn",
+    "ETNJ": "Jever", "ETNL": "Rostock", "ETNN": "Nörvenich", "ETNP": "Hopsten",
+    "ETNS": "Schleswig", "ETNT": "Wittmund", "ETNU": "Neubrandenburg", "ETNW": "Wunstorf",
+    "ETOI": "Vilseck", "ETOR": "Coleman Barracks", "ETOU": "Wiesbaden", "ETOY": "Leighton",
+    "ETSA": "Landsberg am Lech", "ETSB": "Büchel", "ETSE": "Erding",
+    "ETSF": "Fürstenfeldbruck", "ETSH": "Holzdorf", "ETSI": "Ingolstadt", "ETSL": "Lechfeld",
+    "ETSN": "Neuburg an der Donau", "ETSP": "Pferdsfeld", "ETSR": "Roth",
+    "ETUO": "Gütersloh", "ETUR": "Brüggen", "ETWM": "Meppen",
+}
+
+
+def _icao_block() -> str:
+    lines = [f"{k} → {v}" for k, v in sorted(ICAO_DE.items())]
+    return (
+        "ICAO-FLUGHAFENREFERENZ (verbindlich — nur diese Zuordnungen verwenden):\n"
+        + "\n".join(lines)
+        + "\nFür ICAO-Codes die oben nicht aufgeführt sind: Code unverändert übernehmen, nicht raten."
+    )
+
+
 # ── Konfiguration ─────────────────────────────────────────────
 def lese_config(skript_ordner: str) -> dict:
     # Env-Variablen haben Vorrang; config.txt überschreibt nur wenn vorhanden
@@ -247,6 +404,9 @@ def ki_zuordnung(volltext: str, segmente: list, agenda: list, api_key: str, mode
     if extra_instruktionen and extra_instruktionen.strip():
         extra_block = f"\nZUSÄTZLICHE INSTRUKTIONEN DES NUTZERS:\n{extra_instruktionen.strip()}\n"
 
+    # ── ICAO-Referenz ──────────────────────────────────────────
+    icao_ref = _icao_block()
+
     # ── Teilnehmer-Block ──────────────────────────────────────
     teilnehmer_block = ""
     if teilnehmer:
@@ -278,6 +438,8 @@ AGENDA:
 TRANSKRIPT:
 {transkript_text}
 {kanal_block}{extra_block}
+{icao_ref}
+
 Antworte NUR mit folgendem JSON:
 {{
   "agenda_punkte": [
