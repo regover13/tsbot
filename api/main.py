@@ -12,9 +12,9 @@ import os
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 import secrets
@@ -108,6 +108,18 @@ app.include_router(
     prefix="/settings",
     dependencies=[Depends(require_auth)],
 )
+
+@app.middleware("http")
+async def no_index_header(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Robots-Tag"] = "noindex, nofollow"
+    return response
+
+
+@app.get("/robots.txt", include_in_schema=False)
+async def robots_txt():
+    return PlainTextResponse("User-agent: *\nDisallow: /\n")
+
 
 # Statische Dateien
 _static_dir = os.path.join(os.path.dirname(__file__), "static")
