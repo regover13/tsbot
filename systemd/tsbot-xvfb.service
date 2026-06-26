@@ -1,0 +1,12 @@
+[Unit]
+Description=TSBot Xvfb (virtuelles Display :99 fuer headless TS3-Client)
+# Wird von tsbot-ts3client.service via Requires= hochgezogen und stoppt mit ihr (PartOf).
+PartOf=tsbot-ts3client.service
+
+[Service]
+User=tsbot
+Group=tsbot
+ExecStartPre=/bin/sh -c 'rm -f /tmp/.X99-lock /tmp/.X11-unix/X99'
+ExecStart=/usr/bin/Xvfb :99 -screen 0 1280x1024x24 -ac
+Restart=on-failure
+RestartSec=3

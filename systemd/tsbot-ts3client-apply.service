@@ -1,0 +1,8 @@
+[Unit]
+Description=TSBot: TS3-Client-Anforderung anwenden (start/stop)
+# Wird vom tsbot-ts3client.path-Watcher getriggert. Laeuft als root, um
+# die system-Units tsbot-ts3client.service starten/stoppen zu koennen.
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/tsbot-ts3client-apply.sh

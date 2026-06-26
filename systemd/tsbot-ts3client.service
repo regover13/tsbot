@@ -1,0 +1,22 @@
+[Unit]
+Description=TSBot headless TeamSpeak3 Client (on-demand)
+Requires=tsbot-xvfb.service
+Wants=tsbot-pulseaudio.service
+After=tsbot-xvfb.service tsbot-pulseaudio.service
+
+[Service]
+User=tsbot
+Group=tsbot
+WorkingDirectory=/home/tsbot/TeamSpeak3
+Environment=DISPLAY=:99
+Environment=HOME=/home/tsbot
+Environment=USER=tsbot
+Environment=PULSE_SINK=tsbot_sink
+# Pflicht: ohne XDG_RUNTIME_DIR + eigene D-Bus-Session crasht der TS3-Client
+# mit "mutex lock failed: Invalid argument".
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+# Auf Display-Bereitschaft warten (Xvfb-Prozess != Display sofort nutzbar)
+ExecStartPre=/bin/sh -c 'for i in $(seq 1 15); do xdpyinfo -display :99 >/dev/null 2>&1 && exit 0; sleep 1; done; exit 1'
+ExecStart=/usr/bin/dbus-run-session -- /home/tsbot/TeamSpeak3/ts3client_runscript.sh
+Restart=on-failure
+RestartSec=5

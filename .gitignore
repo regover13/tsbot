@@ -5,6 +5,9 @@ config/config.env
 # Claude Code interne Einstellungen
 .claude/
 
+# Playwright/MCP-Snapshots (können Secrets aus Formularfeldern enthalten!)
+.playwright-mcp/
+
 # Aufnahmen und generierte Dateien
 *.mp3
 *.wav

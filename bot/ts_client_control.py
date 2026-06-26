@@ -93,6 +93,22 @@ def _query(commands: list[str]) -> list[str]:
     return responses
 
 
+def clientquery_ready() -> bool:
+    """
+    True wenn das ClientQuery-Plugin auf 127.0.0.1:25639 erreichbar ist
+    (d.h. der TS3-Client läuft und ist bereit für Befehle).
+
+    Wird beim On-Demand-Start genutzt, um zu warten bis der Host-Watcher
+    den Client-Prozess hochgefahren hat, bevor connect() aufgerufen wird.
+    """
+    try:
+        s = socket.create_connection((_CQ_HOST, _CQ_PORT), timeout=2.0)
+        s.close()
+        return True
+    except Exception:
+        return False
+
+
 class TSClientMonitor:
     """
     Überwacht den TS3-Client via persistenter ClientQuery-Verbindung.

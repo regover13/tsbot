@@ -344,11 +344,31 @@ git push master
 ```
 
 **Was wird dockerisiert:** Nur die Python-App (FastAPI + Whisper + Claude).
-**Nicht im Container:** PulseAudio, Xvfb und der TS3 Linux Client – diese laufen stabil als
-systemd-Service (`tsbot-pulseaudio`) auf dem Host. Der Container bekommt Zugriff über:
+**Nicht im Container:** PulseAudio, Xvfb und der TS3 Linux Client – diese laufen als
+systemd-Services auf dem Host. Der Container bekommt Zugriff über:
 - `network_mode: host` → localhost:25639 (ClientQuery) und localhost:10011 (ServerQuery) direkt erreichbar
 - Volume-Mount für PulseAudio-Socket (`/run/user/1000/pulse`)
 - Volume-Mount für TS3 ClientQuery-API-Key (`~/.ts3client`)
+- Volume-Mount `/opt/tsbot/data` (geteilt mit Host) – dient auch als Steuerkanal für den On-Demand-Client (siehe unten)
+
+### On-Demand TS3-Client (CPU-Sparen zwischen Aufnahmen)
+
+Der TS3-Client rendert seine Qt-Oberfläche per Software-OpenGL (keine GPU) und zieht dadurch
+**dauerhaft ~46 % CPU**, auch im Leerlauf. Damit er nur **während einer Aufnahme** läuft,
+steuert der Bot ihn über eine Flag-Datei im geteilten `/opt/tsbot/data`-Volume:
+
+```
+Session-Start → Bot schreibt /opt/tsbot/data/.ts3client.request = "up"
+  → systemd .path-Watcher (Host) erkennt Änderung
+  → tsbot-ts3client.service startet (zieht tsbot-xvfb.service mit hoch)
+  → Bot wartet bis ClientQuery (:25639) bereit ist, dann connect()
+Session-Stop  → Bot schreibt "down" → Service wird gestoppt (Xvfb folgt via PartOf)
+```
+
+Host-Units: `tsbot-ts3client.path`, `tsbot-ts3client-apply.service`, `tsbot-ts3client.service`,
+`tsbot-xvfb.service`. Manueller Start/Stop: `systemctl start|stop tsbot-ts3client.service` (als root).
+Hinweis: Der Client braucht `XDG_RUNTIME_DIR` + eine eigene D-Bus-Session, sonst crasht er beim Start.
+Trade-off: Session-Start dauert ~15–20 s länger, spart aber ~46 % CPU im Leerlauf.
 
 ### Einmaliger Server-Setup
 

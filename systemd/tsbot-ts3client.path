@@ -1,0 +1,11 @@
+[Unit]
+Description=TSBot: ueberwacht TS3-Client-Anforderungsdatei
+
+[Path]
+# Der Bot (Container) schreibt hier 'up' / 'down'; der Bind-Mount auf
+# /opt/tsbot/data macht die Aenderung per inotify auf dem Host sichtbar.
+PathModified=/opt/tsbot/data/.ts3client.request
+Unit=tsbot-ts3client-apply.service
+
+[Install]
+WantedBy=multi-user.target

@@ -77,6 +77,16 @@ nginx/                   # nginx-Reverse-Proxy-Konfiguration
 - Weitere Events: `notifyclientmoved` (Kanalwechsel), `notifyclientkicked` / `notifyconnectstatuschange status=disconnected` → Session automatisch stoppen
 - API-Key-Pfad: `/home/tsbot/.ts3client/clientquery.ini`
 
+## On-Demand TS3-Client (Host-Watcher, ab 2026-06)
+
+Der TS3-Client (`ts3client_linux_amd64`) läuft **headless auf dem Host** (Xvfb `:99`, Software-OpenGL/llvmpipe ⇒ ~46 % CPU im Leerlauf). Der Bot läuft im **Container** (`network_mode: host`) und kann den Host-Prozess nicht direkt verwalten. Damit der Client nur **während Aufnahmen** läuft, gibt es einen Flag-Datei-Mechanismus über das geteilte `DATA_DIR`-Volume:
+
+- **Bot** (`bot/session_manager.py`): schreibt bei Session-Start `DATA_DIR/.ts3client.request` = `up` (vor `connect()`), wartet via `_await_clientquery()` (max. 30 s) bis ClientQuery auf `127.0.0.1:25639` bereit ist; bei Session-Stop = `down`. Readiness-Check: `clientquery_ready()` in `bot/ts_client_control.py`.
+- **Host** (systemd): `tsbot-ts3client.path` überwacht die Flag-Datei (inotify, funktioniert über den Bind-Mount) → triggert `tsbot-ts3client-apply.service` (root) → `/usr/local/sbin/tsbot-ts3client-apply.sh` → `systemctl start|stop tsbot-ts3client.service`.
+- **Client-Services** (User `tsbot`): `tsbot-ts3client.service` (`dbus-run-session -- ts3client_runscript.sh`, braucht `XDG_RUNTIME_DIR=/run/user/1000` + eigene D-Bus-Session, sonst Crash „mutex lock failed: Invalid argument"; `ExecStartPre` wartet per `xdpyinfo` auf Display-Bereitschaft) zieht via `Requires=` `tsbot-xvfb.service` hoch (`PartOf=` ⇒ stoppt mit). `tsbot-pulseaudio.service` bleibt wie gehabt.
+- **Manuell:** `systemctl start|stop tsbot-ts3client.service` (als root). Kein 24/7-Betrieb mehr nötig.
+- **Folge:** Session-Start dauert ~15–20 s länger (Client-Hochlauf), spart aber ~46 % CPU zwischen Aufnahmen.
+
 ## Audio-Aufnahme (`bot/audio_capture.py`)
 
 - Segmentierte Aufnahme: `audio_001.mp3`, `audio_002.mp3`, … (Standard: **600 s / 10 Min** pro Segment)

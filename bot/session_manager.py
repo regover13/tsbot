@@ -19,12 +19,37 @@ from concurrent.futures import ThreadPoolExecutor
 
 from bot.audio_capture import SegmentedAudioCapture
 from bot.ts_query import TSQueryTracker
-from bot.ts_client_control import TSClientControl, TSClientMonitor
+from bot.ts_client_control import TSClientControl, TSClientMonitor, clientquery_ready
 
 logger = logging.getLogger(__name__)
 
 DATA_DIR    = Path(os.environ.get("DATA_DIR",    "/opt/tsbot/data"))
 AGENDA_PATH = Path(os.environ.get("AGENDA_PATH", "/opt/tsbot/data/agenda.txt"))
+
+# On-Demand-TS3-Client: Der Bot läuft im Container, der TS3-Client auf dem Host.
+# Steuerung über eine Flag-Datei im geteilten DATA_DIR-Volume; ein Host-seitiger
+# systemd-.path-Watcher startet/stoppt daraufhin den Client (siehe README → On-Demand).
+CLIENT_REQUEST_FILE = DATA_DIR / ".ts3client.request"
+
+
+def _request_host_client(state: str) -> None:
+    """Signalisiert dem Host-Watcher den gewünschten Client-Zustand ('up' / 'down')."""
+    try:
+        CLIENT_REQUEST_FILE.write_text(state, encoding="utf-8")
+        logger.info("TS3-Client-Anforderung '%s' geschrieben (%s).", state, CLIENT_REQUEST_FILE)
+    except Exception as e:
+        logger.warning("TS3-Client-Anforderung '%s' konnte nicht geschrieben werden: %s", state, e)
+
+
+async def _await_clientquery(timeout: float = 30.0) -> bool:
+    """Wartet (nicht-blockierend) bis das ClientQuery-Plugin bereit ist."""
+    loop = asyncio.get_event_loop()
+    deadline = loop.time() + timeout
+    while loop.time() < deadline:
+        if await loop.run_in_executor(None, clientquery_ready):
+            return True
+        await asyncio.sleep(1.0)
+    return False
 
 
 class State(str, Enum):
@@ -126,6 +151,13 @@ class SessionManager:
         (self.session_dir / "meta.json").write_text(
             json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
         )
+
+        # TS3 Client on-demand hochfahren (Host-Watcher startet den Prozess),
+        # dann warten bis ClientQuery bereit ist, bevor wir verbinden.
+        _request_host_client("up")
+        if not await _await_clientquery(30.0):
+            logger.warning("ClientQuery nach 30s nicht bereit – TS3-Client evtl. nicht gestartet. "
+                           "Verbindung wird trotzdem versucht.")
 
         # TS3 Client verbinden
         self._ts_client = TSClientControl()
@@ -271,6 +303,9 @@ class SessionManager:
             except Exception as e:
                 logger.warning("TS3 Client-Trennung fehlgeschlagen: %s", e)
             self._ts_client = None
+
+        # TS3 Client-Prozess on-demand beenden (Host-Watcher), spart CPU zwischen Aufnahmen
+        _request_host_client("down")
 
         # Pipeline sofort im Tracking-Dict registrieren, damit sie auch dann sichtbar bleibt,
         # wenn eine neue Session gestartet wird bevor _set_state(GENERATING) greift.
