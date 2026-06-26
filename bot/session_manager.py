@@ -89,6 +89,8 @@ class SessionManager:
         self._channel_events:       list = []
         self._kicked_triggered:     bool = False
         self._initial_position_done: bool = False  # True nach erstem (ignorierten) Kanalwechsel
+        self._starting:    bool  = False  # True während start_session läuft (Doppelstart-Schutz)
+        self._starting_at: float = 0.0    # Zeitpunkt des Start-Beginns (Staleness-Timeout)
         self._loop: asyncio.AbstractEventLoop | None = None
 
         # Hintergrund-Pipelines (session_id → State), die parallel laufen
@@ -109,6 +111,13 @@ class SessionManager:
         """
         if self.state == State.RECORDING:
             raise RuntimeError(f"Sitzung läuft bereits (State: {self.state})")
+        # Doppelstart-Schutz: zweiter /session/start während der ~15-20s On-Demand-Startphase
+        # (state ist dann noch IDLE!) wird abgelehnt. Staleness-Timeout (60s) verhindert ein
+        # dauerhaftes Blockieren, falls der Start mit einer Exception abbricht.
+        if self._starting and (time.time() - self._starting_at) < 60:
+            raise RuntimeError("Eine Aufnahme wird gerade gestartet – bitte einen Moment warten.")
+        self._starting    = True
+        self._starting_at = time.time()
         self._reset()
 
         self.session_id  = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -194,6 +203,7 @@ class SessionManager:
             self._monitor._recording_start = recording_start
 
         self.state = State.RECORDING
+        self._starting = False  # Start erfolgreich abgeschlossen
         logger.info("Session %s gestartet – State: RECORDING (Kanal %d)", self.session_id, cid)
         return self.session_id
 

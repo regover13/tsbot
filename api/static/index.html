@@ -504,6 +504,7 @@ const LAST_CHANNEL_KEY = 'tsbot_last_channel_id';
 let _extraSaveTimer = null;
 let _channelNames = {};   // id → name, befüllt von loadChannels()
 let _currentState = 'IDLE';
+let _starting = false;   // true zwischen Klick auf "Aufnahme starten" und bestätigtem RECORDING (Doppelstart-Schutz)
 let _regenSessionId = null;
 const _regenInProgress = new Set();
 const _retranscribeInProgress = new Set();
@@ -711,6 +712,9 @@ async function switchChannelDuringRecording() {
 let _poll = null;
 
 async function startSession() {
+  // Doppelstart-Schutz: erneute Klicks ignorieren, solange ein Start läuft oder bereits aufgenommen wird
+  if (_starting || _currentState === 'RECORDING') return;
+
   const thema = document.getElementById('f-thema').value.trim();
   if (!thema) { toast('Bitte ein Thema eingeben.', 'error'); return; }
 
@@ -721,7 +725,12 @@ async function startSession() {
   const agenda = agendaRaw ? agendaRaw.split('\n').map(l => l.trim()).filter(Boolean) : null;
   const extra  = document.getElementById('f-extra').value.trim() || null;
 
-  setBtn('start', true);
+  // Sofort sperren + Button ausblenden, damit nicht mehrfach gestartet werden kann.
+  // Der Start dauert ~15-20s (On-Demand-TS3-Client). _starting wird erst zurückgesetzt,
+  // wenn applyStatus den RECORDING-Zustand bestätigt (oder hier bei einem Fehler).
+  _starting = true;
+  const startBtn = document.getElementById('btn-start');
+  startBtn.style.display = 'none';
   try {
     const d = await api('/session/start', {
       method: 'POST',
@@ -731,8 +740,8 @@ async function startSession() {
     startPoll();
   } catch(e) {
     toast(e.message, 'error');
-  } finally {
-    setBtn('start', false);
+    _starting = false;
+    startBtn.style.display = '';   // bei Fehler Button wieder einblenden
   }
 }
 
@@ -854,7 +863,11 @@ function applyStatus(s) {
   }
 
   const isIdle = ['IDLE','DONE','ERROR','TRANSCRIBING','GENERATING'].includes(s.state);
-  document.getElementById('btn-start').disabled = !isIdle;
+  if (isRec) _starting = false;   // RECORDING bestätigt → Start-Sperre aufheben
+  const startBtn = document.getElementById('btn-start');
+  startBtn.disabled = !isIdle;
+  // Button ausgeblendet während Aufnahme läuft ODER ein Start gerade hochfährt
+  startBtn.style.display = (isIdle && !_starting) ? '' : 'none';
   document.getElementById('btn-stop').disabled  = !isRec;
 
   // Felder beim ersten RECORDING-Übergang aus Status befüllen (z.B. nach Page-Refresh)
