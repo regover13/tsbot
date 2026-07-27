@@ -106,7 +106,16 @@ fi
 echo "[7/7] Installiere systemd-Services..."
 cp "$TSBOT_DIR/systemd/tsbot-pulseaudio.service" /etc/systemd/system/
 cp "$TSBOT_DIR/systemd/tsbot-api.service"        /etc/systemd/system/
+
+# Drop-in für die mitgelieferte User-Unit pulseaudio.service: verhindert, dass
+# der Daemon im Leerlauf beendet. Ohne ihn kommt ein per Socket-Aktivierung
+# nachgestarteter PulseAudio ohne die Null-Sinks hoch, und der TSBot meldet
+# "PulseAudio-Sink 'tsbot_sink' nicht gefunden" (Vorfall 2026-07-27).
+mkdir -p /etc/systemd/user/pulseaudio.service.d
+cp "$TSBOT_DIR/systemd/pulseaudio-exit-idle.conf" /etc/systemd/user/pulseaudio.service.d/exit-idle.conf
+
 systemctl daemon-reload
+runuser -u tsbot -- env XDG_RUNTIME_DIR=/run/user/1000 systemctl --user daemon-reload 2>/dev/null || true
 systemctl enable tsbot-pulseaudio tsbot-api
 systemctl start  tsbot-pulseaudio
 
