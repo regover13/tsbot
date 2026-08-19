@@ -31,7 +31,17 @@ logger = logging.getLogger(__name__)
 
 # ── Auth ──────────────────────────────────────────────────────
 _API_USER   = os.environ.get("API_USER", "admin")
-_API_SECRET = os.environ.get("API_SECRET", "changeme")
+_API_SECRET = os.environ.get("API_SECRET", "")
+
+# Lieber gar nicht starten als mit einem Passwort, das im Repo steht.
+# Vorher war der Vorgabewert "changeme": Ein Deployment, bei dem die
+# Umgebungsvariable fehlt, waere mit admin:changeme hochgekommen -- und
+# nichts daran haette auffaellig ausgesehen (Security-Audit 2026-08-19).
+if not _API_SECRET:
+    raise RuntimeError(
+        "API_SECRET ist nicht gesetzt. Die API startet ohne Passwort nicht. "
+        "Wert in /opt/tsbot/config/config.env eintragen."
+    )
 _security   = HTTPBasic()
 
 
@@ -70,11 +80,26 @@ app = FastAPI(
     description="Steuerung des TeamSpeak Aufnahme-Bots",
     version="1.0.0",
     lifespan=lifespan,
+    # Kein /docs, kein /openapi.json (Security-Audit 2026-08-19).
+    #
+    # Die Router hier sind saemtlich mit Depends(require_auth) geschuetzt,
+    # die von FastAPI erzeugten Dokumentationsseiten hingen aber ausserhalb
+    # und waren ohne Anmeldung abrufbar. Die Endpunkte selbst gaben nichts
+    # preis, die Routenliste schon: Wer 8080 erreicht, konnte das
+    # vollstaendige Angriffsmodell mit allen Parametern herunterladen,
+    # statt es zu erraten.
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
 )
 
+# Nur die eigene Oberflaeche. Vorher stand hier allow_origins=["*"] --
+# praktisch wenig ausnutzbar, weil die Anmeldung ueber den
+# Authorization-Header laeuft und Browser bei Platzhalter-Herkunft keine
+# Zugangsdaten mitschicken, aber unnoetig offen (Security-Audit 2026-08-19).
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["https://tsbot.devprops.de"],
     allow_methods=["*"],
     allow_headers=["*"],
 )

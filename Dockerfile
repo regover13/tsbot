@@ -28,4 +28,15 @@ ENV DATA_DIR=/opt/tsbot/data
 ENV AGENDA_PATH=/opt/tsbot/data/agenda.txt
 
 EXPOSE 8080
-CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8080", "--log-level", "info"]
+# --host 127.0.0.1 seit 2026-08-19 (Security-Audit).
+#
+# Der Container laeuft mit network_mode: host und teilt sich damit den
+# Netzwerk-Namensraum der Maschine. Mit 0.0.0.0 lauschte die API auf ALLEN
+# Adressen -- von aussen unerreichbar allein deshalb, weil ufw Port 8080
+# nicht freigibt. Eine einzige zusaetzliche Firewall-Regel haette die
+# unverschluesselte API mit ihrer Basic-Auth ins Internet gestellt.
+#
+# Auf Loopback bleibt der einzige Weg der ueber nginx: mit TLS, HSTS,
+# Ratenbegrenzung und dem fail2ban-Jail [tsbot]. nginx laeuft ebenfalls auf
+# dem Host und erreicht 127.0.0.1:8080 unveraendert.
+CMD ["uvicorn", "api.main:app", "--host", "127.0.0.1", "--port", "8080", "--log-level", "info"]
