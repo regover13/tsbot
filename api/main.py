@@ -151,7 +151,18 @@ _static_dir = os.path.join(os.path.dirname(__file__), "static")
 app.mount("/static", StaticFiles(directory=_static_dir), name="static")
 
 
-@app.get("/", response_class=HTMLResponse, include_in_schema=False)
+# Auch die Startseite verlangt Anmeldung. Sie war ungeschuetzt, und damit
+# erschien nie ein Login-Dialog: Die Zugangsdaten landeten nur zufaellig im
+# Auth-Cache des Browsers. War der Cache leer, lud die Seite, aber jeder
+# fetch() auf die geschuetzten Endpunkte lief in ein 401 -- ohne Dialog, denn
+# fetch() loest keinen aus. Es gab dann keinen Weg mehr zur Anmeldung
+# (beobachtet am 2026-09-06 auf zwei Geraeten).
+@app.get(
+    "/",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+    dependencies=[Depends(require_auth)],
+)
 async def root():
     """Liefert das Web-Dashboard."""
     index = os.path.join(_static_dir, "index.html")
