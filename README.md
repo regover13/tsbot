@@ -495,7 +495,10 @@ Alle Einstellungen in `/opt/tsbot/config/config.env` (Linux) bzw. `config.txt` (
 
 ## 5. Web-Interface bedienen
 
-Erreichbar unter `https://tsbot.devprops.de` (Login mit `API_USER` / `API_SECRET`).
+Erreichbar unter `https://tsbot.devprops.de`. Beim Öffnen fragt der Browser einmal nach
+Benutzername und Passwort (`API_USER` / `API_SECRET`) und merkt sie sich danach. Taucht der
+Dialog später wieder auf, hat der Browser die Zugangsdaten vergessen — dann einfach erneut
+eingeben.
 
 ### Tab „Aufnahme"
 
@@ -632,7 +635,8 @@ Liste aller abgeschlossenen Sitzungen mit Download-Links für:
 ### Web-Interface
 
 Das Web-Interface (Port 8080) ist per **HTTP Basic Auth** geschützt
-(Benutzername + Passwort aus `config.env`).
+(Benutzername + Passwort aus `config.env`). Das gilt für die **gesamte** Oberfläche
+einschließlich der Startseite — ohne Anmeldung ist nichts abrufbar.
 
 > **Hinweis:** HTTP Basic Auth überträgt Zugangsdaten Base64-kodiert, nicht verschlüsselt.
 > Für internen Betrieb (LAN, VPN) ist das akzeptabel.
