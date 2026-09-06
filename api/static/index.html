@@ -555,32 +555,13 @@ function switchTab(name, btn) {
 // API Helper
 // ═══════════════════════════════════════════════════════════
 async function api(url, options = {}) {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.withCredentials = true;
-    const method = options.method || 'GET';
-    xhr.open(method, url);
-    xhr.setRequestHeader('Content-Type', 'application/json');
-
-    if (options.headers) {
-      Object.entries(options.headers).forEach(([k, v]) => {
-        xhr.setRequestHeader(k, v);
-      });
-    }
-
-    xhr.onload = () => {
-      const data = (() => {
-        try { return JSON.parse(xhr.responseText); } catch { return {}; }
-      })();
-      if (xhr.status >= 200 && xhr.status < 300) {
-        resolve(data);
-      } else {
-        reject(new Error(data.detail || `HTTP ${xhr.status}`));
-      }
-    };
-    xhr.onerror = () => reject(new Error('Netzwerkfehler'));
-    xhr.send(options.body ? JSON.stringify(options.body) : undefined);
+  const res = await fetch(url, {
+    headers: { 'Content-Type': 'application/json' },
+    ...options,
   });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+  return data;
 }
 
 // ═══════════════════════════════════════════════════════════
