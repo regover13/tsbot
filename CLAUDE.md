@@ -53,10 +53,10 @@ nginx/                   # nginx-Reverse-Proxy-Konfiguration
 - Compose-Stack auf Server: `/var/lib/docker/volumes/portainer_data/_data/compose/5/docker-compose.yml`
 - **API bindet auf `127.0.0.1:8080`** (nicht `0.0.0.0`) — via `command:` Override im Compose-Stack. Nur nginx kann von außen drauf zugreifen.
 - Secrets als Umgebungsvariablen im Compose-Stack hinterlegt
-- **GHCR Registry** muss in Portainer hinterlegt sein (Registries → GitHub → ghcr.io / regover13 / PAT mit `read:packages`), sonst schlägt Deploy still fehl
+- **GHCR Registry** muss in Portainer hinterlegt sein (Registries → GitHub → ghcr.io / regover13 / PAT mit `read:packages`). **Stand 2026-09-06 abgelaufen — der Deploy scheitert, siehe „Deploy" unten.**
 - **CI/CD:** GitHub Actions baut Image → pushed zu GHCR → ruft Portainer API direkt auf (PUT /api/stacks/5) mit `pullImage:true`. Kein Webhook (Portainer-Webhooks setzen Docker Swarm voraus). Secrets: `PORTAINER_URL`, `PORTAINER_USER`, `PORTAINER_PASS`, `PORTAINER_STACK_ID`, `PORTAINER_ENDPOINT_ID`
 - **`cap_add: [SYS_NICE]`** im docker-compose.yml nötig damit `chrt` im Container funktioniert
-- **Vor jedem Push prüfen:** `GET /status` → nur bei `state == IDLE` pushen, sonst Transkription-Abbruch durch Container-Neustart
+- **Vor jedem Deploy prüfen:** `GET /status`. Entscheidend ist, dass nichts läuft — `state` in `IDLE`/`DONE`/`ERROR` **und** `background_pipelines` leer. Bei `RECORDING`, `TRANSCRIBING` oder `GENERATING` bricht der Container-Neustart die Verarbeitung ab. `DONE` ist der Normalzustand nach jedem Meeting und unbedenklich; der Neustart setzt dann nur die Statusanzeige auf `IDLE`, die Session-Dateien liegen auf der Platte.
 
 ---
 
@@ -126,6 +126,43 @@ Der TS3-Client (`ts3client_linux_amd64`) läuft **headless auf dem Host** (Xvfb 
 - Word-Dokument: Inhaltsverzeichnis (Word TOC-Feld), Metadaten-Tabelle, Teilnehmertabelle, Kanalwechsel-Hinweis, Agenda-Struktur, Protokoll-Abschnitte
 - Kanalwechsel im Protokoll: Bullet-Liste vor dem TOC + Zeitangabe (`14:32 Uhr: Kanal A → Kanal B`)
 - Windows-Modus: Teilnehmer per Claude Vision aus TS3-Screenshots (`.png` im Skript-Ordner)
+
+---
+
+## Anmeldung am Web-Interface
+
+HTTP Basic Auth aus `API_USER` / `API_SECRET`. Geschützt sind alle Router — **und seit
+2026-09-06 auch die Startseite `/`** (`dependencies=[Depends(require_auth)]` in `api/main.py`).
+
+**Warum die Startseite mitgeschützt ist.** Sie war vorher frei abrufbar, die API-Endpunkte
+darunter nicht. Damit erschien beim Öffnen nie ein Login-Dialog, und die Zugangsdaten lagen nur
+dann im Auth-Cache des Browsers, wenn dort irgendwann einmal einer aufgetaucht war. War der
+Cache leer, entstand eine Sackgasse: Die Seite lud, aber jeder `fetch()` auf `/status`,
+`/protocols` oder `/agenda` lief in ein 401 — und **`fetch()` löst, anders als eine Navigation,
+keinen Login-Dialog aus**. Die Oberfläche stand mit leeren Feldern und „Load failed" da, ohne
+jeden Weg zur Anmeldung.
+
+Am 2026-09-06 auf zwei Geräten aufgetreten (15:06 Edge/Windows, 19:25 EdgiOS), bei unverändertem
+Code und Image. Im Log steht das Muster unmittelbar nacheinander:
+
+```
+"GET /"        200 OK     ← Seite lädt
+"GET /status"  401        ← API verweigert
+```
+
+**Das Frontend enthält bewusst keine Auth-Logik.** `api()` in `index.html` setzt keinen
+`Authorization`-Header, und das ist richtig so: Den hängt der Browser selbst an, sobald er die
+Zugangsdaten einmal hat. Wer dort einen eigenen Anmeldeweg einbaut, löst ein Problem, das der
+Browser bereits löst — ein Versuch am 2026-09-06, `fetch()` durch `XMLHttpRequest` zu ersetzen,
+hätte zusätzlich alle schreibenden Aufrufe zerstört (doppeltes `JSON.stringify`, weil die
+Aufrufer den Body bereits serialisiert übergeben).
+
+Gegenprobe nach jeder Änderung an der Anmeldung:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8080/                    # 401 erwartet
+curl -s -o /dev/null -u admin:PASSWORT -w '%{http_code}\n' http://127.0.0.1:8080/  # 200 erwartet
+```
 
 ---
 
@@ -202,14 +239,58 @@ sessions/YYYYMMDD_HHMMSS/
 docker ps | grep tsbot
 
 # Live-Log
-docker logs -f tsbot
+docker logs -f tsbot-tsbot-api-1
 
 # API lokal testen (HTTPS über nginx)
 curl -sk -u admin:PASSWORT https://tsbot.devprops.de/status
 
-# Image manuell aktualisieren
-docker pull ghcr.io/regover13/tsbot:latest
+# Welcher Stand läuft gerade?
+docker inspect tsbot-tsbot-api-1 -f '{{.Config.Image}}'
 ```
+
+Ein `docker pull` allein aktualisiert **nichts** — der Container läuft weiter auf seinem
+alten Tag. Zum Ausrollen siehe „Deploy" unten.
+
+---
+
+## Deploy — Kette seit 2026-08-19 unterbrochen
+
+Der Workflow baut das Image und pusht es nach GHCR; der abschließende Schritt „Trigger Portainer
+Redeploy" scheitert seitdem:
+
+```
+failed to pull images of the stack: … error from registry: denied
+```
+
+Portainer zieht seine eigenen GHCR-Zugangsdaten aus der Registry-Konfiguration (PAT mit
+`read:packages`) — der hinterlegte PAT ist abgelaufen. Auf dem Server selbst gibt es keine
+Registry-Zugangsdaten (`/root/.docker/config.json` existiert nicht).
+
+**Folge: Ein grüner Build heißt nicht, dass etwas ausgerollt wurde.** Der Workflow endet rot, der
+Container läuft auf dem alten Tag weiter. Betroffen sind der Lauf vom 19.08.2026 und alle vom
+06.09.2026, jeweils derselbe Schritt. Gegenprobe:
+
+```bash
+docker inspect tsbot-tsbot-api-1 -f '{{.Config.Image}}'   # muss den erwarteten Commit-SHA zeigen
+```
+
+Behoben ist es erst, wenn der PAT in `portainer.devprops.de` → Registries erneuert wurde.
+
+**Bis dahin manuell nachziehen** (so am 2026-09-06 gemacht):
+
+```bash
+S=/var/lib/docker/volumes/portainer_data/_data/compose/5/docker-compose.yml
+sudo cp "$S" /root/tsbot-compose-vor-<sha>.yml              # Sicherung
+echo "$GH_TOKEN" | docker login ghcr.io -u regover13 --password-stdin
+docker pull ghcr.io/regover13/tsbot:<neuer-sha>
+sudo sed -i 's|tsbot:<alter-sha>|tsbot:<neuer-sha>|' "$S"
+sudo docker compose -p tsbot -f "$S" up -d
+docker logout ghcr.io                                       # Token nicht liegen lassen
+```
+
+**`-p tsbot` ist Pflicht.** Ohne Projektnamen leitet Compose ihn aus dem Verzeichnisnamen ab
+(`5`) und stellt einen zweiten Container `5-tsbot-api-1` neben den laufenden, statt ihn zu
+ersetzen.
 
 ---
 
