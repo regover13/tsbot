@@ -330,8 +330,8 @@ Bei jedem Push auf `master` wird automatisch ein neues Image gebaut und deployed
 
 | Schritt | Pflicht? |
 |---------|----------|
-| Portainer installieren + Stack einrichten | ✅ Pflicht |
-| GHCR-Registry in Portainer konfigurieren | ✅ Pflicht |
+| Deploy-Schlüssel auf dem Server anlegen | ✅ Pflicht |
+| Compose-Datei nach `/opt/tsbot/` legen | ✅ Pflicht |
 | GitHub Actions CI/CD (Auto-Deploy) | ⚪ Optional – wer kein automatisches Deployment braucht, kann den Container manuell mit `docker compose up -d` starten |
 
 ### Architektur
@@ -339,8 +339,9 @@ Bei jedem Push auf `master` wird automatisch ein neues Image gebaut und deployed
 ```
 git push master
   → GitHub Actions: Docker build + push → ghcr.io/regover13/tsbot:latest + :<sha>
-  → Portainer API (PUT /api/stacks): Pull neues Image + Container neu erstellen
-    (SHA-basiertes Image-Tag erzwingt Container-Recreate)
+  → ssh root@server "<sha>"   (der Schlüssel kann nur /opt/tsbot/deploy.sh starten)
+    → deploy.sh: Sitzungszustand prüfen → docker pull :<sha>
+                 → Tag in docker-compose.yml eintragen → docker compose up -d
 ```
 
 **Was wird dockerisiert:** Nur die Python-App (FastAPI + Whisper + Claude).
@@ -378,63 +379,44 @@ systemctl stop tsbot-api
 systemctl disable tsbot-api
 ```
 
-**2. Portainer mit Config-Mount starten**
+**2. Deploy-Schlüssel anlegen**
 
-Portainer muss `/opt/tsbot/config` eingebunden haben, damit es `env_file` lesen kann:
+Der Workflow rollt über SSH aus. Auf dem Server als root:
 
 ```bash
-docker run -d \
-  --name portainer \
-  --restart=always \
-  -p 8000:8000 \
-  -p 9443:9443 \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  -v portainer_data:/data \
-  -v /opt/tsbot/config:/opt/tsbot/config \
-  portainer/portainer-ce:latest
+ssh-keygen -t ed25519 -N '' -C 'tsbot-deploy' -f /root/.ssh/tsbot-deploy
+install -o root -g root -m 700 /opt/tsbot/scripts/deploy.sh /opt/tsbot/deploy.sh
+printf 'restrict,command="/opt/tsbot/deploy.sh" %s\n' "$(cat /root/.ssh/tsbot-deploy.pub)" \
+    >> /root/.ssh/authorized_keys
 ```
 
-> Falls Portainer bereits läuft: `docker stop portainer && docker rm portainer` – dann obigen Befehl ausführen.
+`restrict` und `command=` sorgen dafür, dass dieser Schlüssel ausschließlich das Deploy-Skript
+starten kann – keine Shell, kein Forwarding. Übergeben wird ihm nur der Commit-SHA, und das
+Skript prüft ihn, bevor er in einen Befehl gerät.
 
-**3. Portainer: GHCR-Registry konfigurieren**
+**3. Compose-Datei auf den Server legen**
 
-Portainer → Registries → Add registry → Custom registry:
+```bash
+install -m 644 docker-compose.yml /opt/tsbot/docker-compose.yml
+```
 
-| Feld | Wert |
-|------|------|
-| Name | `ghcr.io` |
-| URL | `ghcr.io` |
-| Username | `regover13` |
-| Password | GitHub PAT mit `read:packages`-Scope |
+**4. GitHub Action Secret speichern**
 
-**3. Portainer: Stack erstellen**
-
-Stacks → Add stack → Repository:
-
-| Feld | Wert |
-|------|------|
-| Repository URL | `https://github.com/regover13/tsbot` |
-| Compose path | `docker-compose.yml` |
-| Reference | `refs/heads/master` |
-| Authentication | ✅ Username + GitHub PAT (Scope: `repo`) |
-
-→ **Deploy the stack** → Webhook-URL aus Portainer kopieren
-
-**4. GitHub Action Secrets speichern**
-
-GitHub → Repository → Settings → Secrets → Actions → folgende Secrets anlegen:
+GitHub → Repository → Settings → Secrets → Actions:
 
 | Secret | Wert |
 |--------|------|
-| `PORTAINER_URL` | `https://deine-portainer-domain:9443` |
-| `PORTAINER_USER` | Portainer-Benutzername |
-| `PORTAINER_PASS` | Portainer-Passwort |
-| `PORTAINER_STACK_ID` | Stack-ID (sichtbar in der URL beim Stack-Öffnen) |
-| `PORTAINER_ENDPOINT_ID` | Endpoint-ID (sichtbar in der URL beim Environment-Öffnen) |
+| `VPS_SSH_KEY` | Inhalt von `/root/.ssh/tsbot-deploy` (der **private** Teil) |
 
-Nach dem Setup wird bei jedem Push auf `master` automatisch:
-1. Das Docker-Image mit `:latest` **und** `:<git-sha>` auf GHCR gepusht
-2. Portainer ruft `docker compose up` mit dem SHA-Tag auf → Container wird neu erstellt
+Mehr wird nicht gebraucht. Das Token für den GHCR-Pull erzeugt GitHub bei jedem Lauf selbst und
+reicht es über stdin an das Deploy-Skript weiter – auf dem Server bleibt kein Zugang liegen, der
+ablaufen könnte.
+
+Nach dem Setup wird bei jedem Push auf `master` automatisch das Image gebaut, nach GHCR gepusht
+und auf dem Server ausgerollt.
+
+> Bis zum 07.09.2026 lief das Ausrollen über einen Portainer-Stack. Wer davon noch Reste findet
+> (Stack „tsbot", Compose-Datei im Portainer-Volume): Sie werden nicht mehr verwendet.
 
 ### Lokaler Docker-Test
 

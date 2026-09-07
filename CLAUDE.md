@@ -50,11 +50,10 @@ nginx/                   # nginx-Reverse-Proxy-Konfiguration
 - Session-Daten liegen unter `data/sessions/YYYYMMDD_HHMMSS/`
 - Deployment über **Docker/Portainer** (kein systemd im Container)
 - Image: `ghcr.io/regover13/tsbot:latest` (gebaut via GitHub Actions bei Push auf `master`)
-- Compose-Stack auf Server: `/var/lib/docker/volumes/portainer_data/_data/compose/5/docker-compose.yml`
+- Compose-Datei auf dem Server: `/opt/tsbot/docker-compose.yml` (bis 2026-09-07 im Portainer-Volume)
 - **API bindet auf `127.0.0.1:8080`** (nicht `0.0.0.0`) — via `command:` Override im Compose-Stack. Nur nginx kann von außen drauf zugreifen.
 - Secrets als Umgebungsvariablen im Compose-Stack hinterlegt
-- **GHCR Registry** muss in Portainer hinterlegt sein (Registries → GitHub → ghcr.io / regover13 / PAT mit `read:packages`). **Stand 2026-09-06 abgelaufen — der Deploy scheitert, siehe „Deploy" unten.**
-- **CI/CD:** GitHub Actions baut Image → pushed zu GHCR → ruft Portainer API direkt auf (PUT /api/stacks/5) mit `pullImage:true`. Kein Webhook (Portainer-Webhooks setzen Docker Swarm voraus). Secrets: `PORTAINER_URL`, `PORTAINER_USER`, `PORTAINER_PASS`, `PORTAINER_STACK_ID`, `PORTAINER_ENDPOINT_ID`
+- **CI/CD:** GitHub Actions baut das Image, pusht es nach GHCR und ruft per SSH `/opt/tsbot/deploy.sh` auf dem Server auf. Einziges Secret: `VPS_SSH_KEY`. Siehe „Deploy".
 - **`cap_add: [SYS_NICE]`** im docker-compose.yml nötig damit `chrt` im Container funktioniert
 - **Vor jedem Deploy prüfen:** `GET /status`. Entscheidend ist, dass nichts läuft — `state` in `IDLE`/`DONE`/`ERROR` **und** `background_pipelines` leer. Bei `RECORDING`, `TRANSCRIBING` oder `GENERATING` bricht der Container-Neustart die Verarbeitung ab. `DONE` ist der Normalzustand nach jedem Meeting und unbedenklich; der Neustart setzt dann nur die Statusanzeige auf `IDLE`, die Session-Dateien liegen auf der Platte.
 
@@ -253,44 +252,54 @@ alten Tag. Zum Ausrollen siehe „Deploy" unten.
 
 ---
 
-## Deploy — Kette seit 2026-08-19 unterbrochen
+## Deploy
 
-Der Workflow baut das Image und pusht es nach GHCR; der abschließende Schritt „Trigger Portainer
-Redeploy" scheitert seitdem:
+Push auf `master` → GitHub Actions baut das Image, pusht es nach GHCR und ruft per SSH
+`/opt/tsbot/deploy.sh` auf. Das Skript prüft den Sitzungszustand, zieht das Image, trägt den
+Tag in `/opt/tsbot/docker-compose.yml` ein und startet den Stack neu.
 
-```
-failed to pull images of the stack: … error from registry: denied
-```
+**Der Zugang ist zweifach eingeschnürt:**
 
-Portainer zieht seine eigenen GHCR-Zugangsdaten aus der Registry-Konfiguration (PAT mit
-`read:packages`) — der hinterlegte PAT ist abgelaufen. Auf dem Server selbst gibt es keine
-Registry-Zugangsdaten (`/root/.docker/config.json` existiert nicht).
+- Der Schlüssel `tsbot-deploy` steht in `/root/.ssh/authorized_keys` mit
+  `restrict,command="/opt/tsbot/deploy.sh"` — er kann nichts anderes ausführen. Der Commit-SHA
+  kommt als `SSH_ORIGINAL_COMMAND` an und wird gegen `^[0-9a-f]{40}$` geprüft, bevor er in
+  irgendeinen Befehl gerät.
+- Das GHCR-Token erzeugt GitHub pro Lauf neu und reicht es über **stdin** herein. Auf dem
+  Server bleibt keines zurück (`docker logout` im `trap`). Gegenprobe:
+  `sudo grep ghcr.io /root/.docker/config.json` darf nichts finden.
 
-**Folge: Ein grüner Build heißt nicht, dass etwas ausgerollt wurde.** Der Workflow endet rot, der
-Container läuft auf dem alten Tag weiter. Betroffen sind der Lauf vom 19.08.2026 und alle vom
-06.09.2026, jeweils derselbe Schritt. Gegenprobe:
+**Das Skript bricht ab, wenn eine Sitzung läuft** (`RECORDING`, `TRANSCRIBING`, `GENERATING`) —
+ein Deploy würde die Verarbeitung zerreißen. `IDLE` und `DONE` sind unbedenklich.
+
+### Warum nicht mehr über Portainer
+
+Bis 2026-09-07 spielte der Workflow den Stack über die Portainer-API ein. Portainer zieht das
+Image dabei selbst und braucht dafür **eigene, dauerhaft hinterlegte** GHCR-Zugangsdaten (ein PAT
+in seiner Datenbank). Der lief ab, und der Deploy scheiterte ab dem **2026-08-19** bei jedem Lauf
+mit `error from registry: denied` — unbemerkt, weil zwischen dem 19.08. und dem 06.09. niemand
+gepusht hat. Der laufende Container blieb dabei wochenlang auf altem Stand, während die Builds
+grün aussahen.
+
+Der Kern des Problems war **ein dauerhaftes Geheimnis an einem Ort, den niemand ansieht**:
+weder im Repo noch in den GitHub-Secrets, sondern in Portainers interner Datenbank, ohne
+vermerktes Ablaufdatum. Der SSH-Weg hat kein solches Geheimnis — er benutzt das Einwegtoken des
+Laufs. Damit folgt TSBot demselben Muster wie `hermes`, `garmin-connect-mcp` und `feniska-esphome`,
+deren Deploys durchgehend grün sind.
+
+**Ein grüner Build hieß früher nicht, dass etwas ausgerollt wurde.** Diese Gegenprobe bleibt
+trotzdem nützlich:
 
 ```bash
 docker inspect tsbot-tsbot-api-1 -f '{{.Config.Image}}'   # muss den erwarteten Commit-SHA zeigen
 ```
 
-Behoben ist es erst, wenn der PAT in `portainer.devprops.de` → Registries erneuert wurde.
-
-**Bis dahin manuell nachziehen** (so am 2026-09-06 gemacht):
+### Von Hand ausrollen
 
 ```bash
-S=/var/lib/docker/volumes/portainer_data/_data/compose/5/docker-compose.yml
-sudo cp "$S" /root/tsbot-compose-vor-<sha>.yml              # Sicherung
-echo "$GH_TOKEN" | docker login ghcr.io -u regover13 --password-stdin
-docker pull ghcr.io/regover13/tsbot:<neuer-sha>
-sudo sed -i 's|tsbot:<alter-sha>|tsbot:<neuer-sha>|' "$S"
-sudo docker compose -p tsbot -f "$S" up -d
-docker logout ghcr.io                                       # Token nicht liegen lassen
+echo "$GH_TOKEN" | sudo env SSH_ORIGINAL_COMMAND=<40-stelliger-sha> /opt/tsbot/deploy.sh
 ```
 
-**`-p tsbot` ist Pflicht.** Ohne Projektnamen leitet Compose ihn aus dem Verzeichnisnamen ab
-(`5`) und stellt einen zweiten Container `5-tsbot-api-1` neben den laufenden, statt ihn zu
-ersetzen.
+Derselbe Weg, den auch GitHub geht — nur ohne SSH davor.
 
 ---
 
