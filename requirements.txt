@@ -8,7 +8,7 @@ faster-whisper
 openai
 
 # Protokoll-Generator
-anthropic
+anthropic>=1.0,<2
 python-docx
 
 # Web-API

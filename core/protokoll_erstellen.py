@@ -498,7 +498,6 @@ Hinweise:
     message = client.messages.create(
         model=modell,
         max_tokens=8192,
-        temperature=0.3,
         messages=[{"role": "user", "content": prompt}]
     )
 
@@ -558,7 +557,7 @@ def ki_segment_timestamps(transkript_text: str, agenda: list,
     )
     client = anthropic.Anthropic(api_key=api_key)
     msg = client.messages.create(
-        model=modell, max_tokens=512, temperature=0,
+        model=modell, max_tokens=512,
         messages=[{"role": "user", "content": prompt}]
     )
     antwort = msg.content[0].text.strip()
