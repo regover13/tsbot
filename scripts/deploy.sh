@@ -54,6 +54,17 @@ if [ "$TREFFER" -ne 1 ]; then
 fi
 sed -i "s|^\([[:space:]]*image:[[:space:]]*\).*|\1$IMAGE|" docker-compose.yml
 
+# Welches Image lief bis eben? Das bleibt als Rueckweg liegen.
+VORHER=$(docker inspect tsbot-tsbot-api-1 -f '{{.Config.Image}}' 2>/dev/null || true)
+
 docker compose -p tsbot up -d
+
+# Jeder Deploy bringt einen eigenen SHA-Tag mit; die alten behalten ihren Namen,
+# `docker image prune` sieht sie deshalb nie. Hier bleiben das neue Image und sein
+# Vorgaenger, alle aelteren tsbot-Tags gehen. Ein Fehlschlag ist kein gescheiterter Deploy.
+docker images ghcr.io/regover13/tsbot --format '{{.Repository}}:{{.Tag}}' \
+    | grep -vxF -e "$IMAGE" -e "${VORHER:-$IMAGE}" \
+    | xargs -r docker rmi || true
+docker image prune -f || true
 
 echo "Ausgerollt: $(docker inspect tsbot-tsbot-api-1 -f '{{.Config.Image}}')"
