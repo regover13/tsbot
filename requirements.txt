@@ -22,3 +22,7 @@ ts3
 
 # Konfiguration
 python-dotenv
+
+# Sicherheits-Untergrenze (transitiv über httpx/httpcore):
+# GHSA-6q48-6c7w-9gw2, kompromittierte emSign-Zwischenzertifikate, behoben in 2026.10.19
+certifi>=2026.10.19
